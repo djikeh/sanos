@@ -14,7 +14,7 @@ categories = ["science", "mathematics"]
 default = ["lp-cbc", "iv-jaeckel"]
 
 # LP backends (via good_lp)
-lp-cbc = ["dep:good_lp", "good_lp/coin_cbc"]
+lp-cbc = ["dep:good_lp", "good_lp/lp-solvers"]
 # You can add later if you wire it:
 # lp-highs = ["dep:good_lp", "good_lp/highs"]
 
@@ -25,7 +25,7 @@ iv-jaeckel = ["dep:jaeckel"]
 serde = ["dep:serde"]
 
 [dependencies]
-thiserror = "2"
+#thiserror = "2"
 log = "0.4"
 
 # Optional deps via features
@@ -35,6 +35,6 @@ serde = { version = "1", features = ["derive"], optional = true }
 statrs = "0.18.0"
 
 [dev-dependencies]
-approx = "0.5"
-proptest = "1"
-env_logger = "0.11"
+#approx = "0.5"
+#proptest = "1"
+#env_logger = "0.11"

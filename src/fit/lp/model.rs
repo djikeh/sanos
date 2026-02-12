@@ -1,4 +1,4 @@
-// src/calibration/lp/model.rs
+// src/fit/lp/model.rs
 use crate::error::{SanosError, SanosResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-// src/calibration/kernels.rs
+// src/fit/kernels.rs
 use crate::error::{SanosError, SanosResult};
 
 /// Simple dense matrix in row-major layout.

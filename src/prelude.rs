@@ -5,6 +5,5 @@ pub use crate::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
 pub use crate::interp::{LinearTime, TimeInterpolator};
 pub use crate::surface::SanosSurface;
 pub use crate::grid::{MarketAnchored, StrikeGrid, StrikeGridPolicy};
-pub use crate::calibration::config::{CalibrationConfig, OmegaConfig, ConstraintKernelConfig};
-pub use crate::calibration::kernel_builder::{KernelBuilder, BsKernelBuilder};
-pub use crate::calibration::kernels::{KernelSet, KernelC, KernelTransition, DenseMat};
+pub use crate::fit::config::{FitConfig, KernelConfig, LpConfig};
+pub use crate::fit::kernels::{KernelSet, KernelC, KernelTransition, DenseMat};

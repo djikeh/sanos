@@ -7,4 +7,5 @@ pub mod density;
 pub mod interp;
 pub mod surface;
 pub mod grid;
-mod calibration;
+pub mod fit;
+pub mod calibration;

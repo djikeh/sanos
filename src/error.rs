@@ -41,6 +41,16 @@ pub enum SanosError {
         maturity: f64,
         reason: &'static str,
     },
+
+    /// Feature / component not implemented yet.
+    NotImplemented {
+        what: &'static str,
+    },
+
+    /// Error coming from an external backend (solver, etc.)
+    External {
+        msg: String,
+    },
 }
 
 impl fmt::Display for SanosError {
@@ -63,6 +73,12 @@ impl fmt::Display for SanosError {
             }
             SanosError::AtmNotComputable { maturity, reason } => {
                 write!(f, "ATM mid not computable for maturity {maturity}: {reason}")
+            }
+            SanosError::NotImplemented { what } => {
+                write!(f, "Not implemented: {what}")
+            }
+            SanosError::External { msg } => {
+                write!(f, "External error: {msg}")
             }
         }
     }
