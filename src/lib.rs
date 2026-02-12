@@ -1,4 +1,4 @@
-mod error;
+pub mod error;
 pub mod market;
 pub mod prelude;
 pub mod backbone;
@@ -7,3 +7,4 @@ pub mod density;
 pub mod interp;
 pub mod surface;
 pub mod grid;
+mod calibration;

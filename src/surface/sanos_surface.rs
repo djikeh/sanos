@@ -17,16 +17,16 @@ struct SurfaceCache {
 /// - q: MartingaleDensity (sequence of discrete marginals)
 /// - interp: time interpolation (alpha)
 #[derive(Debug, Clone)]
-pub struct SanosSurface<M: YModel> {
-    y: Arc<M>,
+pub struct SanosSurface {
+    y: Arc<dyn YModel>,
     q: MartingaleDensity,
     interp: Arc<dyn TimeInterpolator>,
     maturities: Vec<f64>,
     cache: Arc<SurfaceCache>,
 }
 
-impl <M: YModel> SanosSurface<M> {
-    pub fn new(y: Arc<M>, q: MartingaleDensity, interp: Arc<dyn TimeInterpolator>) -> Self {
+impl SanosSurface {
+    pub fn new(y: Arc<dyn YModel>, q: MartingaleDensity, interp: Arc<dyn TimeInterpolator>) -> Self {
         let maturities: Vec<f64> = q.marginals().iter().map(|m| m.maturity()).collect();
 
         Self {
@@ -39,7 +39,7 @@ impl <M: YModel> SanosSurface<M> {
     }
 
     #[inline]
-    pub fn y(&self) -> &Arc<M> {
+    pub fn y(&self) -> &Arc<dyn YModel> {
         &self.y
     }
 

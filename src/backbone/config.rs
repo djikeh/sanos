@@ -40,6 +40,7 @@ pub struct BsTimeChangedConfig {
     pub atm_policy: AtmMidPolicyConfig,
     pub var_floor: f64,
     pub enforce_non_decreasing: bool,
+    pub eta: f64
 }
 
 impl Default for BsTimeChangedConfig {
@@ -48,6 +49,7 @@ impl Default for BsTimeChangedConfig {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 1e-12,
             enforce_non_decreasing: true,
+            eta: 0.25,
         }
     }
 }
@@ -105,6 +107,7 @@ mod tests {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 0.0,
             enforce_non_decreasing: true,
+            eta: 0.25,
         };
         assert!(cfg.validate().is_ok());
     }
@@ -115,6 +118,7 @@ mod tests {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: -1e-6,
             enforce_non_decreasing: true,
+            eta: 0.25,
         };
         let err = cfg.validate().unwrap_err();
         match err {
@@ -129,6 +133,7 @@ mod tests {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: f64::NAN,
             enforce_non_decreasing: true,
+            eta: 0.25,
         };
         let err = cfg.validate().unwrap_err();
         match err {

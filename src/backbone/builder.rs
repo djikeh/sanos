@@ -63,7 +63,7 @@ pub fn build_time_changed_lognormal_from_book(
     }
 
     let curve = PiecewiseLinearCurve::new(knots)?;
-    Ok(TimeChangedLognormal::new(curve))
+    Ok(TimeChangedLognormal::new(curve, cfg.eta))
 }
 
 #[cfg(test)]
@@ -101,6 +101,7 @@ mod tests {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 0.0,
             enforce_non_decreasing: false,
+            eta: 0.25,
         };
 
         let model = build_time_changed_lognormal_from_book(&book, &cfg).unwrap();
@@ -115,6 +116,7 @@ mod tests {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 0.02,
             enforce_non_decreasing: true,
+            eta: 0.25,
         };
 
         let model = build_time_changed_lognormal_from_book(&book, &cfg).unwrap();
@@ -128,6 +130,7 @@ mod tests {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 0.0,
             enforce_non_decreasing: true,
+            eta: 0.25,
         };
 
         let model = build_time_changed_lognormal_from_book(&book, &cfg).unwrap();
@@ -142,6 +145,7 @@ mod tests {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 0.0,
             enforce_non_decreasing: false,
+            eta: 0.25,
         };
 
         let model = build_time_changed_lognormal_from_book(&book, &cfg).unwrap();

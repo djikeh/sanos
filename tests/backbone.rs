@@ -1,8 +1,10 @@
-// tests/backbone.rs
+use sanos::backbone::{
+    build_backbone, bs_call_forward_norm, AtmMidPolicyConfig, BackboneConfig, BsTimeChangedConfig,
+    TimeChangedLognormal, YModel,
+};
 use sanos::error::SanosError;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
 use sanos::term::PiecewiseLinearCurve;
-use sanos::backbone::{build_backbone, bs_call_forward_norm, TimeChangedLognormal, YModel, AtmMidPolicyConfig, BackboneConfig, BsTimeChangedConfig, BuiltBackbone};
 
 #[test]
 fn bs_call_var_zero_limit() {
@@ -16,7 +18,7 @@ fn bs_call_var_zero_limit() {
 #[test]
 fn time_changed_lognormal_unit_mean_kernel() {
     let curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
-    let y = TimeChangedLognormal::new(curve);
+    let y = TimeChangedLognormal::new(curve, 1.0);
 
     let v = y.call(1.0, 2.0, 0.0).unwrap();
     assert!((v - 2.0).abs() < 1e-12);
@@ -25,7 +27,7 @@ fn time_changed_lognormal_unit_mean_kernel() {
 #[test]
 fn time_changed_lognormal_bounds() {
     let curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
-    let y = TimeChangedLognormal::new(curve);
+    let y = TimeChangedLognormal::new(curve, 1.0);
 
     let a = 1.5;
     let val = y.call(1.0, a, 1.0).unwrap();
@@ -55,19 +57,44 @@ fn book_from_pairs(pairs: &[(f64, f64)]) -> OptionBook {
 }
 
 #[test]
-fn build_backbone_returns_bs_time_changed_and_name() {
+fn build_backbone_prices_market_atm_when_eta_is_one() {
     let book = book_from_pairs(&[(0.5, 0.04), (1.0, 0.09)]);
-    let cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default());
+    let cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig {
+        atm_policy: AtmMidPolicyConfig::default(),
+        var_floor: 0.0,
+        enforce_non_decreasing: false,
+        eta: 1.0,
+    });
 
     let built = build_backbone(&book, &cfg).unwrap();
-    assert_eq!(built.name(), "bs_time_changed");
+    assert_close(
+        built.call(0.5, 1.0, 1.0).unwrap(),
+        bs_call_forward_norm(1.0, 0.04).unwrap(),
+        1e-12,
+    );
+    assert_close(
+        built.call(1.0, 1.0, 1.0).unwrap(),
+        bs_call_forward_norm(1.0, 0.09).unwrap(),
+        1e-12,
+    );
+}
 
-    match built {
-        BuiltBackbone::BsTimeChanged(model) => {
-            assert_close(model.var(0.5).unwrap(), 0.04, 1e-10);
-            assert_close(model.var(1.0).unwrap(), 0.09, 1e-10);
-        }
-    }
+#[test]
+fn build_backbone_applies_eta_scaling() {
+    let book = book_from_pairs(&[(0.5, 0.04)]);
+    let cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig {
+        atm_policy: AtmMidPolicyConfig::default(),
+        var_floor: 0.0,
+        enforce_non_decreasing: false,
+        eta: 0.25,
+    });
+
+    let built = build_backbone(&book, &cfg).unwrap();
+    assert_close(
+        built.call(0.5, 1.0, 1.0).unwrap(),
+        bs_call_forward_norm(1.0, 0.01).unwrap(),
+        1e-12,
+    );
 }
 
 #[test]
@@ -77,14 +104,15 @@ fn build_backbone_applies_var_floor() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: 0.02,
         enforce_non_decreasing: true,
+        eta: 1.0,
     });
 
     let built = build_backbone(&book, &cfg).unwrap();
-    match built {
-        BuiltBackbone::BsTimeChanged(model) => {
-            assert_close(model.var(0.5).unwrap(), 0.02, 1e-14);
-        }
-    }
+    assert_close(
+        built.call(0.5, 1.0, 1.0).unwrap(),
+        bs_call_forward_norm(1.0, 0.02).unwrap(),
+        1e-12,
+    );
 }
 
 #[test]
@@ -94,15 +122,20 @@ fn build_backbone_clamps_decreasing_variance_when_enabled() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: 0.0,
         enforce_non_decreasing: true,
+        eta: 1.0,
     });
 
     let built = build_backbone(&book, &cfg).unwrap();
-    match built {
-        BuiltBackbone::BsTimeChanged(model) => {
-            assert_close(model.var(0.5).unwrap(), 0.09, 1e-10);
-            assert_close(model.var(1.0).unwrap(), 0.09, 1e-10);
-        }
-    }
+    assert_close(
+        built.call(0.5, 1.0, 1.0).unwrap(),
+        bs_call_forward_norm(1.0, 0.09).unwrap(),
+        1e-12,
+    );
+    assert_close(
+        built.call(1.0, 1.0, 1.0).unwrap(),
+        bs_call_forward_norm(1.0, 0.09).unwrap(),
+        1e-12,
+    );
 }
 
 #[test]
@@ -112,15 +145,20 @@ fn build_backbone_keeps_decreasing_variance_when_disabled() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: 0.0,
         enforce_non_decreasing: false,
+        eta: 1.0,
     });
 
     let built = build_backbone(&book, &cfg).unwrap();
-    match built {
-        BuiltBackbone::BsTimeChanged(model) => {
-            assert_close(model.var(0.5).unwrap(), 0.09, 1e-10);
-            assert_close(model.var(1.0).unwrap(), 0.04, 1e-10);
-        }
-    }
+    assert_close(
+        built.call(0.5, 1.0, 1.0).unwrap(),
+        bs_call_forward_norm(1.0, 0.09).unwrap(),
+        1e-12,
+    );
+    assert_close(
+        built.call(1.0, 1.0, 1.0).unwrap(),
+        bs_call_forward_norm(1.0, 0.04).unwrap(),
+        1e-12,
+    );
 }
 
 #[test]
@@ -130,6 +168,7 @@ fn build_backbone_rejects_negative_var_floor() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: -1e-6,
         enforce_non_decreasing: true,
+        eta: 1.0,
     });
 
     let err = build_backbone(&book, &cfg).unwrap_err();
@@ -146,6 +185,7 @@ fn build_backbone_rejects_non_finite_var_floor() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: f64::NAN,
         enforce_non_decreasing: true,
+        eta: 1.0,
     });
 
     let err = build_backbone(&book, &cfg).unwrap_err();
@@ -162,6 +202,7 @@ fn build_backbone_rejects_negative_atm_tol_log() {
         atm_policy: AtmMidPolicyConfig::NearestOrLinearLogMoneyness { tol_log: -1e-3 },
         var_floor: 0.0,
         enforce_non_decreasing: true,
+        eta: 1.0,
     });
 
     let err = build_backbone(&book, &cfg).unwrap_err();
@@ -178,6 +219,7 @@ fn build_backbone_rejects_non_finite_atm_tol_log() {
         atm_policy: AtmMidPolicyConfig::NearestOrLinearLogMoneyness { tol_log: f64::NAN },
         var_floor: 0.0,
         enforce_non_decreasing: true,
+        eta: 1.0,
     });
 
     let err = build_backbone(&book, &cfg).unwrap_err();
@@ -186,4 +228,3 @@ fn build_backbone_rejects_non_finite_atm_tol_log() {
         _ => panic!("unexpected error variant: {err:?}"),
     }
 }
-

@@ -11,4 +11,4 @@ pub use builder::build_time_changed_lognormal_from_book;
 pub use config::{AtmMidPolicyConfig, BsTimeChangedConfig};
 pub use lognormal_tc::TimeChangedLognormal;
 pub use y_model::{SanityCase, SanityReport, YModel};
-pub use factory::{BackboneConfig, BuiltBackbone, build_backbone};
+pub use factory::{BackboneConfig, build_backbone};

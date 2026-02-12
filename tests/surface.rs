@@ -1,7 +1,7 @@
 // tests/surface.rs
 use std::sync::Arc;
 
-use sanos::backbone::{TimeChangedLognormal, YModel};
+use sanos::backbone::TimeChangedLognormal;
 use sanos::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
 use sanos::interp::LinearTime;
 use sanos::surface::SanosSurface;
@@ -18,7 +18,7 @@ fn sanos_surface_matches_nodes_with_linear_time() {
 
     // Backbone: time-changed lognormal with some total variance curve
     let var_curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
-    let y = Arc::new(TimeChangedLognormal::new(var_curve));
+    let y = Arc::new(TimeChangedLognormal::new(var_curve, 1.0));
 
     let interp = Arc::new(LinearTime) as Arc<dyn sanos::interp::TimeInterpolator>;
     let s = SanosSurface::new(y, q, interp);
@@ -52,7 +52,7 @@ fn sanos_surface_interpolates_between_nodes() {
     let q = MartingaleDensity::new(vec![m1.clone(), m2.clone()]).unwrap();
 
     let var_curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
-    let y = Arc::new(TimeChangedLognormal::new(var_curve));
+    let y = Arc::new(TimeChangedLognormal::new(var_curve, 1.0));
 
     let interp = Arc::new(LinearTime) as Arc<dyn sanos::interp::TimeInterpolator>;
     let s = SanosSurface::new(y, q, interp);

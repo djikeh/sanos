@@ -12,11 +12,12 @@ use crate::term::PiecewiseLinearCurve;
 #[derive(Debug, Clone)]
 pub struct TimeChangedLognormal {
     var_curve: PiecewiseLinearCurve,
+    var_scale: f64,
 }
 
 impl TimeChangedLognormal {
-    pub fn new(var_curve: PiecewiseLinearCurve) -> Self {
-        Self { var_curve }
+    pub fn new(var_curve: PiecewiseLinearCurve, var_scale: f64) -> Self {
+        Self { var_curve, var_scale }
     }
 
     #[inline]
@@ -95,13 +96,7 @@ impl TimeChangedLognormal {
 }
 
 impl YModel for TimeChangedLognormal {
-    type Smoothing = f64;
-
     fn call(&self, maturity: f64, a: f64, b: f64) -> SanosResult<f64> {
-        self.call_eta(maturity, a, b, 1.0)
-    }
-
-    fn smoothed_call(&self, maturity: f64, a: f64, b: f64, smoothing: Self::Smoothing) -> SanosResult<f64> {
-        self.call_eta(maturity, a, b, smoothing)
+        self.call_eta(maturity, a, b, self.var_scale)
     }
 }

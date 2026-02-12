@@ -26,14 +26,49 @@ pub struct SanityReport {
 /// - a > 0
 /// - b >= 0
 pub trait YModel: Send + Sync + Debug {
-    /// Model-specific smoothing specification type.
-    type Smoothing: Send + Sync + Debug + Clone;
-
 
     /// Kernel call: E[(a Y_T - b)^+]
     fn call(&self, maturity: f64, a: f64, b: f64) -> SanosResult<f64>;
 
-    fn smoothed_call(&self, maturity: f64, a: f64, b: f64, smoothing: Self::Smoothing) -> SanosResult<f64>;
+    /// A simple linear model for null volatility and sanity checks: 
+    /// Y_T = 1 deterministically, so call(T, a, b) = (a - b)^+
+    fn linear_call(&self, maturity: f64, a: f64, b: f64) -> SanosResult<f64> {
+        if !maturity.is_finite() {
+            return Err(SanosError::NonFinite { field: "maturity", value: maturity });
+        }
+        if maturity <= 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "maturity",
+                value: maturity,
+                min: f64::MIN_POSITIVE,
+                max: f64::INFINITY,
+            });
+        }
+        if !a.is_finite() {
+            return Err(SanosError::NonFinite { field: "a", value: a });
+        }
+        if !b.is_finite() {
+            return Err(SanosError::NonFinite { field: "b", value: b });
+        }
+        if a <= 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "a",
+                value: a,
+                min: f64::MIN_POSITIVE,
+                max: f64::INFINITY,
+            });
+        }
+        if b < 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "b",
+                value: b,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        
+        Ok((a - b).max(0.0))
+    }
 
     /// Lightweight, non-blocking sanity checks.
     ///
