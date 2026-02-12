@@ -1,11 +1,16 @@
 // src/surface/sanos_surface.rs
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::fmt::Debug;
 
 use crate::backbone::YModel;
 use crate::density::MartingaleDensity;
 use crate::error::{SanosError, SanosResult};
 use crate::interp::TimeInterpolator;
+
+#[derive(Debug, Default)]
+struct SurfaceCache {
+    atm_calls: OnceLock<SanosResult<Vec<f64>>>,
+}
 
 /// SANOS surface as per Theorem 3.1:
 /// - Y: backbone model exposing call(T, a, b) = E[(a Y_T - b)^+]
@@ -16,11 +21,21 @@ pub struct SanosSurface {
     y: Arc<dyn YModel>,
     q: MartingaleDensity,
     interp: Arc<dyn TimeInterpolator>,
+    maturities: Vec<f64>,
+    cache: Arc<SurfaceCache>,
 }
 
 impl SanosSurface {
     pub fn new(y: Arc<dyn YModel>, q: MartingaleDensity, interp: Arc<dyn TimeInterpolator>) -> Self {
-        Self { y, q, interp }
+        let maturities: Vec<f64> = q.marginals().iter().map(|m| m.maturity()).collect();
+
+        Self {
+            y,
+            q,
+            interp,
+            maturities,
+            cache: Arc::new(SurfaceCache::default()),
+        }
     }
 
     #[inline]
@@ -51,20 +66,12 @@ impl SanosSurface {
             });
         }
 
-        let marginals = self.q.marginals();
-        if marginals.len() < 2 {
+        if self.maturities.len() < 2 {
             return Err(SanosError::InvalidOrdering { msg: "SanosSurface requires at least 2 marginals" });
         }
 
-        let maturities: Vec<f64> = marginals.iter().map(|m| m.maturity()).collect();
-
-        // Node ATM calls C_j(1) needed by AtmVarianceTime (Remark 2.13). :contentReference[oaicite:3]{index=3}
-        let mut atm_calls = Vec::with_capacity(maturities.len());
-        for j in 0..maturities.len() {
-            atm_calls.push(self.slice_call(j, 1.0)?);
-        }
-
-        let (j, alpha) = self.interp.alpha(maturity, &maturities, &atm_calls)?;
+        let atm_calls = self.atm_calls_cached()?;
+        let (j, alpha) = self.interp.alpha(maturity, &self.maturities, atm_calls)?;
 
         let c0 = self.slice_call(j, strike)?;
         let c1 = self.slice_call(j + 1, strike)?;
@@ -91,5 +98,21 @@ impl SanosSurface {
         }
 
         Ok(acc)
+    }
+
+    fn compute_atm_calls(&self) -> SanosResult<Vec<f64>> {
+        let mut out = Vec::with_capacity(self.maturities.len());
+        for j in 0..self.maturities.len() {
+            out.push(self.slice_call(j, 1.0)?);
+        }
+        Ok(out)
+    }
+
+    fn atm_calls_cached(&self) -> SanosResult<&[f64]> {
+        let res = self.cache.atm_calls.get_or_init(|| self.compute_atm_calls());
+        match res {
+            Ok(values) => Ok(values.as_slice()),
+            Err(err) => Err(err.clone()),
+        }
     }
 }
