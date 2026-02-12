@@ -1,7 +1,8 @@
 // src/grid/policy.rs
 use crate::error::{SanosError, SanosResult};
+use crate::grid::config::{AtmRefineConfig, GridSizeConfig, WingsConfig};
+use crate::grid::StrikeGrid;
 use crate::market::{AtmMidPolicy, OptionBook};
-use super::{AtmRefineSpec, GridSizeControl, StrikeGrid, WingsSpec};
 
 pub trait StrikeGridPolicy: Send + Sync {
     fn build(&self, book: &OptionBook, atm: &dyn AtmMidPolicy) -> SanosResult<Vec<StrikeGrid>>;
@@ -12,9 +13,9 @@ pub trait StrikeGridPolicy: Send + Sync {
 #[derive(Debug, Clone, Copy)]
 pub struct MarketAnchored {
     pub ensure_atm: bool,
-    pub wings: WingsSpec,
-    pub atm_refine: AtmRefineSpec,
-    pub size_control: GridSizeControl,
+    pub wings: WingsConfig,
+    pub atm_refine: AtmRefineConfig,
+    pub size_control: GridSizeConfig,
     pub min_strike: f64,
     pub max_strike: f64,
     pub min_spacing_log: f64,
@@ -24,9 +25,9 @@ impl Default for MarketAnchored {
     fn default() -> Self {
         Self {
             ensure_atm: true,
-            wings: WingsSpec::default(),
-            atm_refine: AtmRefineSpec::default(),
-            size_control: GridSizeControl::default(),
+            wings: WingsConfig::default(),
+            atm_refine: AtmRefineConfig::default(),
+            size_control: GridSizeConfig::default(),
             min_strike: 1e-4,
             max_strike: 1e4,
             min_spacing_log: 1e-3,
@@ -311,6 +312,101 @@ fn enforce_size_control(
         if spacing > 1.0 {
             // Extremely aggressive thinning; accept last filtered even if large to avoid infinite loop.
             return Ok(filtered);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::market::{CallQuote, NearestOrLinearLogMoneyness, OptionChain};
+
+    fn sample_book() -> OptionBook {
+        let c1 = OptionChain::new(
+            0.5,
+            vec![
+                CallQuote::new(0.9, 0.22, 0.24, 1.0).unwrap(),
+                CallQuote::new(1.1, 0.15, 0.17, 1.0).unwrap(),
+            ],
+        )
+        .unwrap();
+        let c2 = OptionChain::new(
+            1.0,
+            vec![
+                CallQuote::new(0.85, 0.28, 0.30, 1.0).unwrap(),
+                CallQuote::new(1.15, 0.11, 0.13, 1.0).unwrap(),
+            ],
+        )
+        .unwrap();
+        OptionBook::new(vec![c2, c1]).unwrap()
+    }
+
+    #[test]
+    fn clean_strikes_filters_invalid_and_ensures_atm() {
+        let out = clean_strikes(vec![f64::NAN, -2.0, 0.5, 0.5, 2.0], 0.1, 5.0, 1e-3, true).unwrap();
+        assert!(out.windows(2).all(|w| w[1] > w[0]));
+        assert!(out.iter().any(|&k| k > 0.0 && (k.ln()).abs() <= 1e-3 + 1e-12));
+    }
+
+    #[test]
+    fn clean_strikes_rejects_too_small_grid() {
+        let err = clean_strikes(vec![0.5], 0.1, 5.0, 1e-3, false).unwrap_err();
+        match err {
+            SanosError::InvalidOrdering { msg } => {
+                assert_eq!(msg, "strike grid too small after cleaning")
+            }
+            _ => panic!("unexpected error variant: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn enforce_size_control_errors_when_market_exceeds_limit_and_is_protected() {
+        let strikes = vec![0.8, 1.0, 1.2];
+        let market = vec![0.8, 1.0, 1.2];
+        let err = enforce_size_control(&strikes, &market, 2, true, 1e-3).unwrap_err();
+        match err {
+            SanosError::InvalidOrdering { msg } => {
+                assert_eq!(msg, "market strikes exceed max_points; cannot keep_all_market_strikes")
+            }
+            _ => panic!("unexpected error variant: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn enforce_size_control_noop_when_within_limit() {
+        let strikes = vec![0.8, 1.0, 1.2];
+        let out = enforce_size_control(&strikes, &strikes, 3, true, 1e-3).unwrap();
+        assert_eq!(out, strikes);
+    }
+
+    #[test]
+    fn market_anchored_build_returns_grids_per_chain() {
+        let book = sample_book();
+        let atm = NearestOrLinearLogMoneyness::default();
+        let policy = MarketAnchored::default();
+
+        let grids = policy.build(&book, &atm).unwrap();
+        assert_eq!(grids.len(), book.len());
+        for g in grids {
+            assert!(g.strikes().len() >= 2);
+            assert!(g.strikes().windows(2).all(|w| w[1] > w[0]));
+            assert!(g.strikes().iter().any(|&k| (k.ln()).abs() <= 1e-2));
+        }
+    }
+
+    #[test]
+    fn market_anchored_build_rejects_invalid_policy_config() {
+        let book = sample_book();
+        let atm = NearestOrLinearLogMoneyness::default();
+        let policy = MarketAnchored {
+            min_spacing_log: -1e-3,
+            ..MarketAnchored::default()
+        };
+
+        let err = policy.build(&book, &atm).unwrap_err();
+        match err {
+            SanosError::InvalidBound { field, .. } => assert_eq!(field, "min_spacing_log"),
+            _ => panic!("unexpected error variant: {err:?}"),
         }
     }
 }
