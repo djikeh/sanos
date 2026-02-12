@@ -26,8 +26,14 @@ pub struct SanityReport {
 /// - a > 0
 /// - b >= 0
 pub trait YModel: Send + Sync + Debug {
+    /// Model-specific smoothing specification type.
+    type Smoothing: Send + Sync + Debug + Clone;
+
+
     /// Kernel call: E[(a Y_T - b)^+]
     fn call(&self, maturity: f64, a: f64, b: f64) -> SanosResult<f64>;
+
+    fn smoothed_call(&self, maturity: f64, a: f64, b: f64, smoothing: Self::Smoothing) -> SanosResult<f64>;
 
     /// Lightweight, non-blocking sanity checks.
     ///
