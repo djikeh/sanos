@@ -78,3 +78,34 @@ pub fn bs_call_forward_norm(k: f64, var: f64) -> SanosResult<f64> {
 
     Ok(nd1 - k * nd2)
 }
+
+/// Black–Scholes ATM implied total variance W from forward-normalized ATM call price C(1, W).
+///
+/// For k = 1 (ATM forward), we have:
+///   C = N(d1) - N(d2) with d1 = 0.5*sqrt(W), d2 = -0.5*sqrt(W)
+/// => C = 2*N(0.5*sqrt(W)) - 1
+/// => N(0.5*sqrt(W)) = (1 + C)/2
+/// => W = 4 * (Phi^{-1}((1+C)/2))^2
+pub fn bs_implied_atm_var_from_call(call_atm: f64) -> SanosResult<f64> {
+    if !call_atm.is_finite() {
+        return Err(SanosError::NonFinite { field: "call_atm", value: call_atm });
+    }
+    if !(0.0..=1.0).contains(&call_atm) {
+        return Err(SanosError::InvalidBound {
+            field: "call_atm",
+            value: call_atm,
+            min: 0.0,
+            max: 1.0,
+        });
+    }
+
+    let p = 0.5 * (1.0 + call_atm);
+
+    // clamp away from {0,1} to avoid +/- infinity inverse_cdf
+    let eps = 1e-15;
+    let p = p.clamp(eps, 1.0 - eps);
+
+    let n = Normal::new(0.0, 1.0).expect("Normal(0,1) must be constructible");
+    let x = n.inverse_cdf(p); // x = 0.5*sqrt(W)
+    Ok(4.0 * x * x)
+}

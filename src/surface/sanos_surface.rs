@@ -58,8 +58,11 @@ impl SanosSurface {
 
         let maturities: Vec<f64> = marginals.iter().map(|m| m.maturity()).collect();
 
-        // For LinearTime we don't need atm_calls, but keep vector for future interpolators.
-        let atm_calls = vec![0.0_f64; maturities.len()];
+        // Node ATM calls C_j(1) needed by AtmVarianceTime (Remark 2.13). :contentReference[oaicite:3]{index=3}
+        let mut atm_calls = Vec::with_capacity(maturities.len());
+        for j in 0..maturities.len() {
+            atm_calls.push(self.slice_call(j, 1.0)?);
+        }
 
         let (j, alpha) = self.interp.alpha(maturity, &maturities, &atm_calls)?;
 
