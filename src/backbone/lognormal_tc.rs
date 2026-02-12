@@ -4,15 +4,6 @@ use crate::backbone::y_model::YModel;
 use crate::error::{SanosError, SanosResult};
 use crate::term::PiecewiseLinearCurve;
 
-/// Smoothing specification for time-changed lognormal: scale factor for variance.
-/// This is a simple parametric form that preserves the lognormal structure of the kernel.
-/// The smoothed kernel is E[(a Y_T^eta - b)^+] = a * BSCall(F=1, K=b/a, var=eta * v(T)).
-/// Note that eta=1 recovers the original kernel.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TCLnSmoothing {
-    var_scale: f64,
-}
-
 /// Time-changed lognormal martingale backbone:
 ///     Y_T = exp(B_{v(T)} - 0.5 v(T))
 ///
@@ -104,13 +95,13 @@ impl TimeChangedLognormal {
 }
 
 impl YModel for TimeChangedLognormal {
-    type Smoothing = TCLnSmoothing;
+    type Smoothing = f64;
 
     fn call(&self, maturity: f64, a: f64, b: f64) -> SanosResult<f64> {
         self.call_eta(maturity, a, b, 1.0)
     }
 
     fn smoothed_call(&self, maturity: f64, a: f64, b: f64, smoothing: Self::Smoothing) -> SanosResult<f64> {
-        self.call_eta(maturity, a, b, smoothing.var_scale)
+        self.call_eta(maturity, a, b, smoothing)
     }
 }
