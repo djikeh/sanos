@@ -67,6 +67,14 @@ impl BsTimeChangedConfig {
                 max: f64::INFINITY,
             });
         }
+        if self.eta < 0.0 || self.eta > 1.0 {
+            return Err(SanosError::InvalidBound {
+                field: "bs_time_changed.eta",
+                value: self.eta,
+                min: 0.0,
+                max: 1.0,
+            });
+        }
         Ok(())
     }
 }
