@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 // src/backbone/y_model.rs
 use crate::error::{SanosError, SanosResult};
 
@@ -24,7 +25,7 @@ pub struct SanityReport {
 /// - maturity T > 0
 /// - a > 0
 /// - b >= 0
-pub trait YModel: Send + Sync {
+pub trait YModel: Send + Sync + Debug {
     /// Kernel call: E[(a Y_T - b)^+]
     fn call(&self, maturity: f64, a: f64, b: f64) -> SanosResult<f64>;
 
