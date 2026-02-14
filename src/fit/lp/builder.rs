@@ -23,6 +23,14 @@ pub trait LpBuilder: Send + Sync {
 pub struct SanosLpBuilder;
 
 impl SanosLpBuilder {
+    #[inline]
+    fn paper_quote_weight(quote_bid: f64, quote_ask: f64, quote_weight: f64) -> f64 {
+        // Eq. (26): w ~ 1 / (ask - bid). We also keep user-provided quote weight.
+        // Clamp spread away from zero for numerical robustness.
+        let spread = (quote_ask - quote_bid).max(1e-12);
+        quote_weight / spread
+    }
+
     fn add_time_constraints(
         &self,
         lp: &mut LpModel,
@@ -212,8 +220,9 @@ impl SanosLpBuilder {
             q_var_ids.push(qj);
         }
 
-        // 2) Soft bid/ask with hinge slacks.
-        // s_bid >= max(0, bid+eps - p), s_ask >= max(0, p-(ask-eps))
+        // 2) SANOS robust objective (Remark 4.1):
+        //    epsilon_inside * |mid - p|
+        //  + slack_penalty * (max(0, bid - p) + max(0, p - ask))
         for (j, chain) in book.chains().iter().enumerate() {
             let quotes = chain.quotes();
             let kc = &kernels.c[j];
@@ -228,10 +237,35 @@ impl SanosLpBuilder {
             }
 
             for (m, quote) in quotes.iter().enumerate() {
+                let e_mid = lp.add_var(format!("e_mid_{}_{}", j, m), 0.0, f64::INFINITY)?;
                 let s_bid = lp.add_var(format!("s_bid_{}_{}", j, m), 0.0, f64::INFINITY)?;
                 let s_ask = lp.add_var(format!("s_ask_{}_{}", j, m), 0.0, f64::INFINITY)?;
+                let mid = quote.mid();
 
-                // p + s_bid >= bid + epsilon_inside
+                // |mid - p| <= e_mid
+                // p - mid <= e_mid
+                let mut mid_pos_terms: Vec<LinTerm> = Vec::with_capacity(qj.len() + 1);
+                for (i, &qid) in qj.iter().enumerate() {
+                    let c = kc.c.get(m, i);
+                    if c != 0.0 {
+                        mid_pos_terms.push(LinTerm { var: qid, coef: c });
+                    }
+                }
+                mid_pos_terms.push(LinTerm { var: e_mid, coef: -1.0 });
+                lp.add_constraint(format!("hinge_mid_pos_{}_{}", j, m), mid_pos_terms, Sense::Le, mid)?;
+
+                // mid - p <= e_mid
+                let mut mid_neg_terms: Vec<LinTerm> = Vec::with_capacity(qj.len() + 1);
+                for (i, &qid) in qj.iter().enumerate() {
+                    let c = kc.c.get(m, i);
+                    if c != 0.0 {
+                        mid_neg_terms.push(LinTerm { var: qid, coef: -c });
+                    }
+                }
+                mid_neg_terms.push(LinTerm { var: e_mid, coef: -1.0 });
+                lp.add_constraint(format!("hinge_mid_neg_{}_{}", j, m), mid_neg_terms, Sense::Le, -mid)?;
+
+                // bid - p <= s_bid  <=>  p + s_bid >= bid
                 let mut lo_terms: Vec<LinTerm> = Vec::with_capacity(qj.len() + 1);
                 for (i, &qid) in qj.iter().enumerate() {
                     let c = kc.c.get(m, i);
@@ -244,10 +278,10 @@ impl SanosLpBuilder {
                     format!("hinge_bid_{}_{}", j, m),
                     lo_terms,
                     Sense::Ge,
-                    quote.bid + epsilon_inside,
+                    quote.bid,
                 )?;
 
-                // p - s_ask <= ask - epsilon_inside
+                // p - ask <= s_ask  <=>  p - s_ask <= ask
                 let mut hi_terms: Vec<LinTerm> = Vec::with_capacity(qj.len() + 1);
                 for (i, &qid) in qj.iter().enumerate() {
                     let c = kc.c.get(m, i);
@@ -260,10 +294,15 @@ impl SanosLpBuilder {
                     format!("hinge_ask_{}_{}", j, m),
                     hi_terms,
                     Sense::Le,
-                    quote.ask - epsilon_inside,
+                    quote.ask,
                 )?;
 
-                let w = quote.weight * slack_penalty;
+                let wq = Self::paper_quote_weight(quote.bid, quote.ask, quote.weight);
+                let w = wq * slack_penalty;
+                let w_mid = wq * epsilon_inside;
+                if w_mid.is_finite() && w_mid > 0.0 {
+                    lp.add_obj_term(e_mid, w_mid)?;
+                }
                 if w.is_finite() && w > 0.0 {
                     lp.add_obj_term(s_bid, w)?;
                     lp.add_obj_term(s_ask, w)?;
@@ -374,7 +413,8 @@ impl SanosLpBuilder {
                 lp.add_constraint(format!("l1_neg_{}_{}", j, m), terms2, Sense::Le, -mid)?;
 
                 // objective coefficient
-                let w = q.weight * global_weight;
+                let wq = Self::paper_quote_weight(q.bid, q.ask, q.weight);
+                let w = wq * global_weight;
                 if w.is_finite() && w > 0.0 {
                     lp.add_obj_term(e_id, w)?;
                 }

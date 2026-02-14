@@ -33,7 +33,10 @@ pub enum ObjectiveConfig {
     /// Hard constraints: model prices must lie within bid/ask.
     HardBidAsk,
 
-    /// Soft bid/ask constraints with hinge slacks.
+    /// SANOS paper-style robust objective:
+    /// - w * (epsilon_inside * |mid - model|
+    ///      + slack_penalty * (max(0, bid-model) + max(0, model-ask)))
+    /// where default `w` follows Eq. (26): `quote.weight / (ask-bid)`.
     HingeBidAsk {
         slack_penalty: f64,
         epsilon_inside: f64,
@@ -45,7 +48,10 @@ pub enum ObjectiveConfig {
 
 impl Default for ObjectiveConfig {
     fn default() -> Self {
-        ObjectiveConfig::HardBidAsk
+        ObjectiveConfig::HingeBidAsk {
+            slack_penalty: 1.0,
+            epsilon_inside: 1e-8,
+        }
     }
 }
 

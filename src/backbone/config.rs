@@ -67,12 +67,12 @@ impl BsTimeChangedConfig {
                 max: f64::INFINITY,
             });
         }
-        if self.eta < 0.0 || self.eta > 1.0 {
+        if self.eta < 0.0 || self.eta >= 1.0 {
             return Err(SanosError::InvalidBound {
                 field: "bs_time_changed.eta",
                 value: self.eta,
                 min: 0.0,
-                max: 1.0,
+                max: 1.0 - f64::EPSILON,
             });
         }
         Ok(())
@@ -146,6 +146,21 @@ mod tests {
         let err = cfg.validate().unwrap_err();
         match err {
             SanosError::NonFinite { field, .. } => assert_eq!(field, "bs_time_changed.var_floor"),
+            _ => panic!("unexpected error variant: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn bs_time_changed_validate_rejects_eta_equal_one() {
+        let cfg = BsTimeChangedConfig {
+            atm_policy: AtmMidPolicyConfig::default(),
+            var_floor: 0.0,
+            enforce_non_decreasing: true,
+            eta: 1.0,
+        };
+        let err = cfg.validate().unwrap_err();
+        match err {
+            SanosError::InvalidBound { field, .. } => assert_eq!(field, "bs_time_changed.eta"),
             _ => panic!("unexpected error variant: {err:?}"),
         }
     }

@@ -1,4 +1,5 @@
 use crate::backbone::{build_backbone, BackboneConfig};
+use crate::density::DensityTolerances;
 use crate::error::SanosResult;
 use crate::fit::{build_kernels, extract_density, solve_lp};
 use crate::fit::lp::builder::{LpBuilder, SanosLpBuilder};
@@ -32,6 +33,9 @@ pub fn calibrate(book: &OptionBook, cfg: &CalibrationConfig) -> SanosResult<Sano
 
     // 6) Extract martingale density
     let q = extract_density(&built_lp.layout, &sol, &grids)?;
+    let tol = DensityTolerances::from_tol(1e-10)?;
+    q.validate_marginals(tol)?;
+    q.validate_convex_order(tol)?;
 
     // 7) Time interpolator
     let interp = cfg.time_interp.build()?;

@@ -55,7 +55,7 @@ mod tests {
             atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 0.0,
             enforce_non_decreasing: false,
-            eta: 1.0,
+            eta: 1.0 - 1e-12,
         });
 
         let built = build_backbone(&book, &cfg).unwrap();

@@ -57,13 +57,13 @@ fn book_from_pairs(pairs: &[(f64, f64)]) -> OptionBook {
 }
 
 #[test]
-fn build_backbone_prices_market_atm_when_eta_is_one() {
+fn build_backbone_prices_market_atm_when_eta_is_near_one() {
     let book = book_from_pairs(&[(0.5, 0.04), (1.0, 0.09)]);
     let cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: 0.0,
         enforce_non_decreasing: false,
-        eta: 1.0,
+        eta: 1.0 - 1e-12,
     });
 
     let built = build_backbone(&book, &cfg).unwrap();
@@ -104,7 +104,7 @@ fn build_backbone_applies_var_floor() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: 0.02,
         enforce_non_decreasing: true,
-        eta: 1.0,
+        eta: 1.0 - 1e-12,
     });
 
     let built = build_backbone(&book, &cfg).unwrap();
@@ -122,7 +122,7 @@ fn build_backbone_clamps_decreasing_variance_when_enabled() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: 0.0,
         enforce_non_decreasing: true,
-        eta: 1.0,
+        eta: 1.0 - 1e-12,
     });
 
     let built = build_backbone(&book, &cfg).unwrap();
@@ -145,7 +145,7 @@ fn build_backbone_keeps_decreasing_variance_when_disabled() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: 0.0,
         enforce_non_decreasing: false,
-        eta: 1.0,
+        eta: 1.0 - 1e-12,
     });
 
     let built = build_backbone(&book, &cfg).unwrap();
@@ -168,7 +168,7 @@ fn build_backbone_rejects_negative_var_floor() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: -1e-6,
         enforce_non_decreasing: true,
-        eta: 1.0,
+        eta: 1.0 - 1e-12,
     });
 
     let err = build_backbone(&book, &cfg).unwrap_err();
@@ -185,7 +185,7 @@ fn build_backbone_rejects_non_finite_var_floor() {
         atm_policy: AtmMidPolicyConfig::default(),
         var_floor: f64::NAN,
         enforce_non_decreasing: true,
-        eta: 1.0,
+        eta: 1.0 - 1e-12,
     });
 
     let err = build_backbone(&book, &cfg).unwrap_err();
@@ -202,7 +202,7 @@ fn build_backbone_rejects_negative_atm_tol_log() {
         atm_policy: AtmMidPolicyConfig::NearestOrLinearLogMoneyness { tol_log: -1e-3 },
         var_floor: 0.0,
         enforce_non_decreasing: true,
-        eta: 1.0,
+        eta: 1.0 - 1e-12,
     });
 
     let err = build_backbone(&book, &cfg).unwrap_err();
@@ -219,7 +219,7 @@ fn build_backbone_rejects_non_finite_atm_tol_log() {
         atm_policy: AtmMidPolicyConfig::NearestOrLinearLogMoneyness { tol_log: f64::NAN },
         var_floor: 0.0,
         enforce_non_decreasing: true,
-        eta: 1.0,
+        eta: 1.0 - 1e-12,
     });
 
     let err = build_backbone(&book, &cfg).unwrap_err();
