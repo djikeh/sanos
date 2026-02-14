@@ -11,3 +11,4 @@ pub use kernels::{DenseMat, KernelC, KernelTransition, KernelSet};
 pub use kernel_builder::build_kernels;
 pub use solver::{solve_lp, LpSolution};
 pub use extract::extract_density;
+pub use lp::builder::{LpBuilder, SanosLpBuilder};

@@ -57,8 +57,8 @@ impl LpModel {
     }
 
     pub fn add_var(&mut self, name: impl Into<String>, lb: f64, ub: f64) -> SanosResult<usize> {
-        if !lb.is_finite() || !ub.is_finite() {
-            return Err(SanosError::InvalidOrdering { msg: "Variable bounds must be finite" });
+        if lb.is_nan() || ub.is_nan() {
+            return Err(SanosError::InvalidOrdering { msg: "Variable bounds must not be NaN" });
         }
         if lb > ub {
             return Err(SanosError::InvalidOrdering { msg: "Variable lb must be <= ub" });

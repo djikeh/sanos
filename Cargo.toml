@@ -35,6 +35,5 @@ serde = { version = "1", features = ["derive"], optional = true }
 statrs = "0.18.0"
 
 [dev-dependencies]
-#approx = "0.5"
-#proptest = "1"
-#env_logger = "0.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
