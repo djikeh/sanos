@@ -23,6 +23,64 @@ pub trait LpBuilder: Send + Sync {
 pub struct SanosLpBuilder;
 
 impl SanosLpBuilder {
+    fn add_time_constraints(
+        &self,
+        lp: &mut LpModel,
+        kernels: &KernelSet,
+        q_var_ids: &[Vec<usize>],
+        cfg: &FitConfig,
+    ) -> SanosResult<()> {
+        if !cfg.lp.include_time_constraints {
+            return Ok(());
+        }
+
+        if kernels.transitions.len() + 1 != q_var_ids.len() {
+            return Err(SanosError::InvalidOrdering {
+                msg: "time constraints require transitions.len() = q.len()-1",
+            });
+        }
+
+        // For each j >= 1, enforce component-wise:
+        //   U_j q_j - R_j q_{j-1} >= 0
+        for (idx, tr) in kernels.transitions.iter().enumerate() {
+            let j = idx + 1;
+            let q_prev = &q_var_ids[j - 1];
+            let q_cur = &q_var_ids[j];
+
+            if tr.u.nrows != q_cur.len() || tr.u.ncols != q_cur.len() {
+                return Err(SanosError::InvalidOrdering {
+                    msg: "U dimensions must be Nj x Nj",
+                });
+            }
+            if tr.r.nrows != q_cur.len() || tr.r.ncols != q_prev.len() {
+                return Err(SanosError::InvalidOrdering {
+                    msg: "R dimensions must be Nj x N(j-1)",
+                });
+            }
+
+            for row in 0..q_cur.len() {
+                let mut terms: Vec<LinTerm> = Vec::with_capacity(q_cur.len() + q_prev.len());
+
+                for (col, &vid) in q_cur.iter().enumerate() {
+                    let coef = tr.u.get(row, col);
+                    if coef != 0.0 {
+                        terms.push(LinTerm { var: vid, coef });
+                    }
+                }
+                for (col, &vid) in q_prev.iter().enumerate() {
+                    let coef = tr.r.get(row, col);
+                    if coef != 0.0 {
+                        terms.push(LinTerm { var: vid, coef: -coef });
+                    }
+                }
+
+                lp.add_constraint(format!("time_{}_{}", j, row), terms, Sense::Ge, 0.0)?;
+            }
+        }
+
+        Ok(())
+    }
+
     fn build_hard_bid_ask(&self, book: &OptionBook, kernels: &KernelSet, cfg: &FitConfig) -> SanosResult<BuiltLp> {
         // basic alignment checks
         if kernels.c.len() != book.len() {
@@ -93,6 +151,134 @@ impl SanosLpBuilder {
             }
             lp.add_constraint(format!("mean_{}", j), mean_terms, Sense::Eq, 1.0)?;
         }
+
+        self.add_time_constraints(&mut lp, kernels, &q_var_ids, cfg)?;
+
+        Ok(BuiltLp { model: lp, layout: LpLayout { q_var_ids } })
+    }
+
+    fn build_hinge_bid_ask(
+        &self,
+        book: &OptionBook,
+        kernels: &KernelSet,
+        slack_penalty: f64,
+        epsilon_inside: f64,
+        cfg: &FitConfig,
+    ) -> SanosResult<BuiltLp> {
+        if !slack_penalty.is_finite() || slack_penalty <= 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "objective.slack_penalty",
+                value: slack_penalty,
+                min: f64::MIN_POSITIVE,
+                max: f64::INFINITY,
+            });
+        }
+        if !epsilon_inside.is_finite() || epsilon_inside < 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "objective.epsilon_inside",
+                value: epsilon_inside,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+
+        if kernels.c.len() != book.len() {
+            return Err(SanosError::InvalidOrdering { msg: "kernels.c.len() must match book.len()" });
+        }
+
+        let mut lp = LpModel::new();
+        let mut q_var_ids: Vec<Vec<usize>> = Vec::with_capacity(book.len());
+
+        // 1) variables q_{j,i}
+        for (j, kc) in kernels.c.iter().enumerate() {
+            let n_mod = kc.model_strikes.len();
+            if n_mod == 0 {
+                return Err(SanosError::EmptyCollection { what: "model_strikes" });
+            }
+
+            let mut qj = Vec::with_capacity(n_mod);
+            for i in 0..n_mod {
+                let name = format!("q_{}_{}", j, i);
+                let lb = if cfg.lp.enforce_nonnegativity { 0.0 } else { f64::NEG_INFINITY };
+                let ub = f64::INFINITY;
+                qj.push(lp.add_var(name, lb, ub)?);
+            }
+
+            if cfg.lp.enforce_simplex {
+                let terms = qj.iter().map(|&vid| LinTerm { var: vid, coef: 1.0 }).collect();
+                lp.add_constraint(format!("simplex_{}", j), terms, Sense::Eq, 1.0)?;
+            }
+
+            q_var_ids.push(qj);
+        }
+
+        // 2) Soft bid/ask with hinge slacks.
+        // s_bid >= max(0, bid+eps - p), s_ask >= max(0, p-(ask-eps))
+        for (j, chain) in book.chains().iter().enumerate() {
+            let quotes = chain.quotes();
+            let kc = &kernels.c[j];
+            let qj = &q_var_ids[j];
+
+            let n_mkt = quotes.len();
+            if kc.market_strikes.len() != n_mkt {
+                return Err(SanosError::InvalidOrdering { msg: "kernel market_strikes must align with chain quotes" });
+            }
+            if kc.c.nrows != n_mkt || kc.c.ncols != qj.len() {
+                return Err(SanosError::InvalidOrdering { msg: "kernel matrix dims mismatch" });
+            }
+
+            for (m, quote) in quotes.iter().enumerate() {
+                let s_bid = lp.add_var(format!("s_bid_{}_{}", j, m), 0.0, f64::INFINITY)?;
+                let s_ask = lp.add_var(format!("s_ask_{}_{}", j, m), 0.0, f64::INFINITY)?;
+
+                // p + s_bid >= bid + epsilon_inside
+                let mut lo_terms: Vec<LinTerm> = Vec::with_capacity(qj.len() + 1);
+                for (i, &qid) in qj.iter().enumerate() {
+                    let c = kc.c.get(m, i);
+                    if c != 0.0 {
+                        lo_terms.push(LinTerm { var: qid, coef: c });
+                    }
+                }
+                lo_terms.push(LinTerm { var: s_bid, coef: 1.0 });
+                lp.add_constraint(
+                    format!("hinge_bid_{}_{}", j, m),
+                    lo_terms,
+                    Sense::Ge,
+                    quote.bid + epsilon_inside,
+                )?;
+
+                // p - s_ask <= ask - epsilon_inside
+                let mut hi_terms: Vec<LinTerm> = Vec::with_capacity(qj.len() + 1);
+                for (i, &qid) in qj.iter().enumerate() {
+                    let c = kc.c.get(m, i);
+                    if c != 0.0 {
+                        hi_terms.push(LinTerm { var: qid, coef: c });
+                    }
+                }
+                hi_terms.push(LinTerm { var: s_ask, coef: -1.0 });
+                lp.add_constraint(
+                    format!("hinge_ask_{}_{}", j, m),
+                    hi_terms,
+                    Sense::Le,
+                    quote.ask - epsilon_inside,
+                )?;
+
+                let w = quote.weight * slack_penalty;
+                if w.is_finite() && w > 0.0 {
+                    lp.add_obj_term(s_bid, w)?;
+                    lp.add_obj_term(s_ask, w)?;
+                }
+            }
+
+            let mut mean_terms = Vec::with_capacity(qj.len());
+            for (i, &vid) in qj.iter().enumerate() {
+                let k_i = kernels.c[j].model_strikes[i];
+                mean_terms.push(LinTerm { var: vid, coef: k_i });
+            }
+            lp.add_constraint(format!("mean_{}", j), mean_terms, Sense::Eq, 1.0)?;
+        }
+
+        self.add_time_constraints(&mut lp, kernels, &q_var_ids, cfg)?;
 
         Ok(BuiltLp { model: lp, layout: LpLayout { q_var_ids } })
     }
@@ -204,6 +390,8 @@ impl SanosLpBuilder {
             lp.add_constraint(format!("mean_{}", j), mean_terms, Sense::Eq, 1.0)?;
         }
 
+        self.add_time_constraints(&mut lp, kernels, &q_var_ids, cfg)?;
+
         Ok(BuiltLp { model: lp, layout: LpLayout { q_var_ids } })
     }
 }
@@ -215,10 +403,10 @@ impl LpBuilder for SanosLpBuilder {
 
         match cfg.objective {
             ObjectiveConfig::HardBidAsk => self.build_hard_bid_ask(book, kernels, cfg),
+            ObjectiveConfig::HingeBidAsk { slack_penalty, epsilon_inside } => {
+                self.build_hinge_bid_ask(book, kernels, slack_penalty, epsilon_inside, cfg)
+            }
             ObjectiveConfig::L1Mid { weight } => self.build_l1_mid(book, kernels, weight, cfg),
-            _ => Err(SanosError::NotImplemented {
-                what: "Only ObjectiveConfig::HardBidAsk and ObjectiveConfig::L1Mid are implemented for now".into(),
-            }),
         }
     }
 }

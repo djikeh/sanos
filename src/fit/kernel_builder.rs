@@ -72,6 +72,7 @@ pub fn build_kernels(
         if j >= 1 {
             let prev_grid = &grids[j - 1];
             let prev_strikes = prev_grid.strikes();
+            let prev_maturity = prev_grid.maturity();
 
             let nj = n_mod;
             let njm1 = prev_strikes.len();
@@ -85,11 +86,11 @@ pub fn build_kernels(
             }
             let u = DenseMat::new(nj, nj, u_data)?;
 
-            // R: Nj x N(j-1)
+            // R: Nj x N(j-1), evaluated at previous maturity T_{j-1}
             let mut r_data = Vec::with_capacity(nj * njm1);
             for &a in grid.strikes() {
                 for &b in prev_strikes {
-                    r_data.push(call_for_constraints(y, omega, maturity, a, b)?);
+                    r_data.push(call_for_constraints(y, omega, prev_maturity, a, b)?);
                 }
             }
             let r = DenseMat::new(nj, njm1, r_data)?;
