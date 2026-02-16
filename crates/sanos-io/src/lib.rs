@@ -7,13 +7,16 @@
 //! - converting a snapshot into an `OptionBook` (call bid/ask prices)
 
 use anyhow::{bail, Context, Result};
+use serde::Deserialize;
 use std::fs;
 use std::path::Path;
 
 use sanos::backbone::bs::bs_call_forward_norm;
 use sanos::calibration::CalibrationConfig;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
-use sanos_schema::v1::{IvSurfaceSnapshotV1, IV_SNAPSHOT_SCHEMA};
+use sanos_schema::v1::{
+    IvQuoteV1, IvSurfaceSnapshotV1, MaturityNodeV1, SnapshotConventionsV1, IV_SNAPSHOT_SCHEMA,
+};
 
 /// Load an IV surface snapshot (schema v1) from a JSON file.
 pub fn load_iv_snapshot_v1<P: AsRef<Path>>(path: P) -> Result<IvSurfaceSnapshotV1> {
@@ -21,8 +24,9 @@ pub fn load_iv_snapshot_v1<P: AsRef<Path>>(path: P) -> Result<IvSurfaceSnapshotV
     let raw = fs::read_to_string(path_ref)
         .with_context(|| format!("failed to read snapshot file: {}", path_ref.display()))?;
 
-    let snap: IvSurfaceSnapshotV1 = serde_json::from_str(&raw)
+    let compat: SnapshotCompat = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse snapshot JSON: {}", path_ref.display()))?;
+    let snap = compat.into_strict()?;
 
     // Light schema check (optional field).
     if let Some(schema) = &snap.schema {
@@ -32,6 +36,106 @@ pub fn load_iv_snapshot_v1<P: AsRef<Path>>(path: P) -> Result<IvSurfaceSnapshotV
     }
 
     Ok(snap)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SnapshotCompat {
+    #[serde(default)]
+    schema: Option<String>,
+    #[serde(default)]
+    schema_name: Option<String>,
+    #[serde(default)]
+    as_of: Option<String>,
+    #[serde(default)]
+    conventions: Option<SnapshotConventionsCompat>,
+    maturities: Vec<MaturityNodeCompat>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SnapshotConventionsCompat {
+    #[serde(default = "default_one")]
+    forward: f64,
+    #[serde(default)]
+    r: f64,
+    #[serde(default)]
+    q: f64,
+    #[serde(default)]
+    strike_convention: Option<String>,
+    #[serde(default)]
+    strike_unit: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct MaturityNodeCompat {
+    t: f64,
+    quotes: Vec<IvQuoteCompat>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct IvQuoteCompat {
+    k: f64,
+    bid_iv: f64,
+    ask_iv: f64,
+}
+
+impl SnapshotCompat {
+    fn into_strict(self) -> Result<IvSurfaceSnapshotV1> {
+        let schema = match (self.schema, self.schema_name) {
+            (Some(schema), _) => Some(schema),
+            (None, Some(schema_name)) if schema_name == "iv_surface_snapshot" => {
+                Some(IV_SNAPSHOT_SCHEMA.to_string())
+            }
+            (None, Some(other)) => bail!("unexpected snapshot schema_name: {other}"),
+            (None, None) => None,
+        };
+
+        let conventions = self
+            .conventions
+            .unwrap_or_else(|| SnapshotConventionsCompat {
+                forward: default_one(),
+                r: 0.0,
+                q: 0.0,
+                strike_convention: None,
+                strike_unit: None,
+            });
+        let strike_convention = conventions
+            .strike_convention
+            .or(conventions.strike_unit)
+            .unwrap_or_else(|| "forward_moneyness".to_string());
+
+        let maturities = self
+            .maturities
+            .into_iter()
+            .map(|m| MaturityNodeV1 {
+                t: m.t,
+                quotes: m
+                    .quotes
+                    .into_iter()
+                    .map(|q| IvQuoteV1 {
+                        k: q.k,
+                        bid_iv: q.bid_iv,
+                        ask_iv: q.ask_iv,
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        Ok(IvSurfaceSnapshotV1 {
+            schema,
+            as_of: self.as_of,
+            conventions: Some(SnapshotConventionsV1 {
+                forward: conventions.forward,
+                r: conventions.r,
+                q: conventions.q,
+                strike_convention,
+            }),
+            maturities,
+        })
+    }
+}
+
+fn default_one() -> f64 {
+    1.0
 }
 
 /// Load a SANOS calibration config from a JSON file.
@@ -125,9 +229,8 @@ pub fn snapshot_v1_to_option_book(snapshot: &IvSurfaceSnapshotV1) -> Result<Opti
             let ask = c_ask_norm * conv.forward;
             let strike = q.k * conv.forward;
 
-            let quote = CallQuote::new(strike, bid, ask, conv.forward).with_context(|| {
-                format!("failed to build CallQuote (t={}, k={})", node.t, q.k)
-            })?;
+            let quote = CallQuote::new(strike, bid, ask, conv.forward)
+                .with_context(|| format!("failed to build CallQuote (t={}, k={})", node.t, q.k))?;
             quotes.push(quote);
         }
 
@@ -137,4 +240,47 @@ pub fn snapshot_v1_to_option_book(snapshot: &IvSurfaceSnapshotV1) -> Result<Opti
     }
 
     OptionBook::new(chains).context("failed to build OptionBook")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compat_loader_accepts_legacy_schema_name_and_strike_unit() {
+        let raw = r#"
+        {
+          "schema_name": "iv_surface_snapshot",
+          "schema_version": "1.0.0",
+          "scenario_id": "legacy_case",
+          "as_of": "2026-01-01T00:00:00Z",
+          "conventions": {
+            "time_unit": "year_fraction_act365f",
+            "strike_unit": "forward_moneyness",
+            "quote_type": "implied_vol"
+          },
+          "maturities": [
+            {
+              "t": 0.25,
+              "quotes": [
+                {"k": 1.0, "bid_iv": 0.20, "ask_iv": 0.21, "mid_iv": 0.205}
+              ]
+            }
+          ],
+          "generator": {"name": "x"}
+        }
+        "#;
+
+        let parsed: SnapshotCompat = serde_json::from_str(raw).expect("compat parse");
+        let snap = parsed.into_strict().expect("strict snapshot");
+        assert_eq!(snap.schema.as_deref(), Some(IV_SNAPSHOT_SCHEMA));
+        assert_eq!(
+            snap.conventions
+                .as_ref()
+                .map(|c| c.strike_convention.as_str()),
+            Some("forward_moneyness")
+        );
+        assert_eq!(snap.maturities.len(), 1);
+        assert_eq!(snap.maturities[0].quotes.len(), 1);
+    }
 }

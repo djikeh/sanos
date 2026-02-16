@@ -123,13 +123,16 @@ impl Default for LpConfig {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum LpSolverConfig {
+    /// Pure Rust LP solver backend (no external binary required).
+    Microlp,
+
+    /// External CBC solver binary (requires `cbc` installed in PATH).
     Cbc { msg: bool, time_limit_sec: Option<u64> },
-    // Highs { presolve: bool, time_limit_sec: Option<u64> },
 }
 
 impl Default for LpSolverConfig {
     fn default() -> Self {
-        LpSolverConfig::Cbc { msg: true, time_limit_sec: None }
+        LpSolverConfig::Microlp
     }
 }
 

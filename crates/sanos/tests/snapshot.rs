@@ -2,7 +2,6 @@ use sanos::backbone::bs::bs_call_forward_norm;
 use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
 use sanos::calibration::{calibrate, CalibrationConfig};
 use sanos::density::DensityTolerances;
-use sanos::error::SanosError;
 use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig};
 use sanos::grid::StrikeGridPolicyConfig;
 use sanos::interp::TimeInterpConfig;
@@ -60,7 +59,7 @@ fn default_calibration_config_for_snapshot() -> CalibrationConfig {
 
     let mut fit = FitConfig::default();
     fit.objective = ObjectiveConfig::HardBidAsk;
-    fit.solver = LpSolverConfig::Cbc { msg: false, time_limit_sec: Some(10) };
+    fit.solver = LpSolverConfig::Microlp;
 
     CalibrationConfig {
         backbone,
@@ -70,31 +69,18 @@ fn default_calibration_config_for_snapshot() -> CalibrationConfig {
     }
 }
 
-fn is_missing_cbc(err: &SanosError) -> bool {
-    match err {
-        SanosError::External { msg } => {
-            let m = msg.to_ascii_lowercase();
-            m.contains("cbc") && m.contains("program not found")
-        }
-        _ => false,
-    }
-}
-
 #[test]
 fn calibrate_snapshot_produces_valid_martingale_density() {
     let book = load_book_from_snapshot();
     let cfg = default_calibration_config_for_snapshot();
 
-    let surface = match calibrate(&book, &cfg) {
-        Ok(surface) => surface,
-        Err(err) if is_missing_cbc(&err) => return,
-        Err(err) => panic!("calibration must succeed: {err:?}"),
-    };
+    let surface = calibrate(&book, &cfg).expect("calibration must succeed");
 
     let tol = DensityTolerances::from_tol(1e-10).unwrap();
     let q = surface.martingale_density();
     q.validate_marginals(tol).expect("marginals must be valid");
-    q.validate_convex_order(tol).expect("convex order must hold");
+    q.validate_convex_order(tol)
+        .expect("convex order must hold");
 }
 
 #[test]
@@ -102,17 +88,15 @@ fn calibrated_surface_respects_market_bid_ask_on_nodes() {
     let book = load_book_from_snapshot();
     let cfg = default_calibration_config_for_snapshot();
 
-    let surface = match calibrate(&book, &cfg) {
-        Ok(surface) => surface,
-        Err(err) if is_missing_cbc(&err) => return,
-        Err(err) => panic!("calibration must succeed: {err:?}"),
-    };
+    let surface = calibrate(&book, &cfg).expect("calibration must succeed");
     let eps = 5e-6;
 
     for chain in book.chains() {
         let t = chain.maturity();
         for q in chain.quotes() {
-            let c = surface.call(t, q.k).expect("surface call must be computable");
+            let c = surface
+                .call(t, q.k)
+                .expect("surface call must be computable");
             assert!(c + eps >= q.bid, "T={t}, k={}, c={c}, bid={}", q.k, q.bid);
             assert!(c <= q.ask + eps, "T={t}, k={}, c={c}, ask={}", q.k, q.ask);
         }

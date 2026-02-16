@@ -5,6 +5,10 @@ edition = "2021"
 license = "MIT"
 description = "CLI harness for running SANOS calibrations on JSON snapshots"
 
+[[bin]]
+name = "sanos"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }

@@ -30,3 +30,7 @@ target
 # Extra
 data/
 tools/
+
+# Scripts and executables
+sanos.sh
+sanos.cmd

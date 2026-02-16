@@ -10,13 +10,12 @@ keywords = ["options", "volatility", "arbitrage", "calibration", "quant"]
 categories = ["science", "mathematics"]
 
 [features]
-# Start pragmatic: CBC as default LP backend + Jaeckel for implied vol.
-default = ["lp-cbc", "iv-jaeckel"]
+# Start pragmatic: pure-Rust LP backend by default + Jaeckel for implied vol.
+default = ["lp-microlp", "iv-jaeckel"]
 
 # LP backends (via good_lp)
 lp-cbc = ["dep:good_lp", "good_lp/lp-solvers"]
-# You can add later if you wire it:
-# lp-highs = ["dep:good_lp", "good_lp/highs"]
+lp-microlp = ["dep:good_lp", "good_lp/microlp"]
 
 # Implied vol
 iv-jaeckel = ["dep:jaeckel"]
