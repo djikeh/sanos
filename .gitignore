@@ -28,5 +28,5 @@ target
 .tmp/
 
 # Extra
-data/images/
-data/surfaces/
+data/
+tools/
