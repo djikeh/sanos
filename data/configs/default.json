@@ -37,7 +37,11 @@
     "kernel": {
       "omega": "One"
     },
-    "objective": "HardBidAsk",
+    "objective": {
+      "L1Mid": {
+        "weight": 1.0
+      }
+    },
     "lp": {
       "enforce_simplex": true,
       "enforce_nonnegativity": true,
