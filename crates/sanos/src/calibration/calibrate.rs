@@ -1,15 +1,33 @@
 use crate::backbone::{build_backbone, BackboneConfig};
 use crate::density::DensityTolerances;
 use crate::error::SanosResult;
-use crate::fit::{build_kernels, extract_density, solve_lp};
 use crate::fit::lp::builder::{LpBuilder, SanosLpBuilder};
+use crate::fit::{
+    add_l1_density_anchor, build_kernels, build_linear_density_initialization, extract_density,
+    solve_lp, LinearDensityInitialization,
+};
 use crate::grid::build_strike_grids;
 use crate::market::OptionBook;
 use crate::surface::SanosSurface;
 
 use super::config::CalibrationConfig;
 
-pub fn calibrate(book: &OptionBook, cfg: &CalibrationConfig) -> SanosResult<SanosSurface> {
+#[derive(Debug, Clone)]
+pub struct CalibrationRunStats {
+    pub objective_value: f64,
+    pub initialization: Option<LinearDensityInitialization>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CalibrationResult {
+    pub surface: SanosSurface,
+    pub stats: CalibrationRunStats,
+}
+
+pub fn calibrate_with_stats(
+    book: &OptionBook,
+    cfg: &CalibrationConfig,
+) -> SanosResult<CalibrationResult> {
     cfg.fit.validate()?;
 
     // 1) backbone
@@ -26,19 +44,55 @@ pub fn calibrate(book: &OptionBook, cfg: &CalibrationConfig) -> SanosResult<Sano
 
     // 4) LP build
     let lp_builder = SanosLpBuilder::default();
-    let built_lp = lp_builder.build(book, &kernels, &cfg.fit)?;
+    let mut built_lp = lp_builder.build(book, &kernels, &cfg.fit)?;
 
-    // 5) Solve LP
+    // 5) Optional linear-density initialization + LP anchor.
+    let initialization = build_linear_density_initialization(
+        book,
+        &grids,
+        &cfg.fit.initialization,
+        &cfg.fit.solver,
+    )?;
+    if let Some(init) = initialization.as_ref() {
+        add_l1_density_anchor(
+            &mut built_lp.model,
+            &built_lp.layout.q_var_ids,
+            &init.projected,
+            cfg.fit.initialization.anchor_l1_weight,
+        )?;
+    }
+
+    // 6) Solve LP
     let sol = solve_lp(&built_lp.model, &cfg.fit.solver)?;
+    let objective_value = evaluate_objective_value(&built_lp.model, &sol.values);
 
-    // 6) Extract martingale density
+    // 7) Extract martingale density
     let q = extract_density(&built_lp.layout, &sol, &grids)?;
     let tol = DensityTolerances::from_tol(1e-10)?;
     q.validate_marginals(tol)?;
     q.validate_convex_order(tol)?;
 
-    // 7) Time interpolator
+    // 8) Time interpolator
     let interp = cfg.time_interp.build()?;
 
-    Ok(SanosSurface::new(y, q, interp))
+    Ok(CalibrationResult {
+        surface: SanosSurface::new(y, q, interp),
+        stats: CalibrationRunStats {
+            objective_value,
+            initialization,
+        },
+    })
+}
+
+pub fn calibrate(book: &OptionBook, cfg: &CalibrationConfig) -> SanosResult<SanosSurface> {
+    Ok(calibrate_with_stats(book, cfg)?.surface)
+}
+
+fn evaluate_objective_value(model: &crate::fit::lp::model::LpModel, values: &[f64]) -> f64 {
+    model
+        .objective
+        .terms
+        .iter()
+        .map(|t| t.coef * values[t.var])
+        .sum()
 }

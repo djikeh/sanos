@@ -65,7 +65,30 @@ def _quality_comment(summary: dict) -> str:
     )
     if mae_iv is not None and rmse_iv is not None:
         lines.append(f"Erreur en volatilite implicite: MAE={float(mae_iv):.3e}, RMSE={float(rmse_iv):.3e}.")
+    if summary.get("iv_total_variation") is not None and summary.get("iv_max_second_diff") is not None:
+        lines.append(
+            f"Rugosite IV (global): TV={float(summary['iv_total_variation']):.3e}, "
+            f"max seconde diff={float(summary['iv_max_second_diff']):.3e}."
+        )
     return " ".join(lines)
+
+
+def _fmt_opt(value: float | None, fmt: str) -> str:
+    if value is None:
+        return "-"
+    return format(float(value), fmt)
+
+
+def _top_smoothness_improvements(cmp_data: dict, n: int = 3) -> list[dict]:
+    rows = cmp_data.get("per_maturity", []) if isinstance(cmp_data, dict) else []
+    scored = []
+    for row in rows:
+        delta = row.get("delta_max_second_diff")
+        if delta is None:
+            continue
+        scored.append((float(delta), row))
+    scored.sort(key=lambda x: x[0])
+    return [row for _, row in scored[: max(0, n)]]
 
 
 def build_markdown_report(
@@ -85,6 +108,8 @@ def build_markdown_report(
 
     diagnostics = load_json(diagnostics_path)
     summary = diagnostics.get("summary", {})
+    no_arb = diagnostics.get("no_arbitrage", {})
+    smooth_cmp = diagnostics.get("smoothness_comparison")
     per = diagnostics.get("per_maturity", [])
     image_rel = Path("..") / "images" / run_id
     surface_rel = Path("..") / "surfaces" / run_id
@@ -104,33 +129,122 @@ def build_markdown_report(
     lines.append("")
     lines.append("## Global Metrics")
     lines.append(f"- Number of quotes: `{summary.get('n_quotes', 0)}`")
+    lines.append(f"- Objective value: `{float(summary.get('objective_value', 0.0)):.6e}`")
     lines.append(f"- Inside bid/ask ratio: `{float(summary.get('inside_bid_ask_ratio', 0.0)):.2%}`")
+    lines.append(
+        f"- Bid/ask violation (max / mean): "
+        f"`{float(summary.get('max_bid_ask_violation', 0.0)):.3e}` / "
+        f"`{float(summary.get('mean_bid_ask_violation', 0.0)):.3e}`"
+    )
     lines.append(f"- MAE(mid): `{float(summary.get('mae_mid', 0.0)):.3e}`")
     lines.append(f"- RMSE(mid): `{float(summary.get('rmse_mid', 0.0)):.3e}`")
     lines.append(f"- MAE(residual/half-spread): `{float(summary.get('mae_spread_norm', 0.0)):.3f}`")
+    if summary.get("iv_total_variation") is not None:
+        lines.append(f"- IV total variation: `{float(summary.get('iv_total_variation')):.3e}`")
+    if summary.get("iv_max_second_diff") is not None:
+        lines.append(f"- IV max second diff: `{float(summary.get('iv_max_second_diff')):.3e}`")
     if summary.get("mae_iv") is not None and summary.get("rmse_iv") is not None:
         lines.append(f"- MAE(iv): `{float(summary.get('mae_iv')):.3e}`")
         lines.append(f"- RMSE(iv): `{float(summary.get('rmse_iv')):.3e}`")
     lines.append("")
+    lines.append("## No-Arbitrage Diagnostics")
+    lines.append(
+        f"- Strike monotonicity violation (max / mean / count): "
+        f"`{float(no_arb.get('monotonicity_max_violation', 0.0)):.3e}` / "
+        f"`{float(no_arb.get('monotonicity_mean_violation', 0.0)):.3e}` / "
+        f"`{int(no_arb.get('monotonicity_violations', 0))}`"
+    )
+    lines.append(
+        f"- Strike convexity violation (max / mean / count): "
+        f"`{float(no_arb.get('convexity_max_violation', 0.0)):.3e}` / "
+        f"`{float(no_arb.get('convexity_mean_violation', 0.0)):.3e}` / "
+        f"`{int(no_arb.get('convexity_violations', 0))}`"
+    )
+    lines.append(
+        f"- Calendar violation (max / mean / count): "
+        f"`{float(no_arb.get('calendar_max_violation', 0.0)):.3e}` / "
+        f"`{float(no_arb.get('calendar_mean_violation', 0.0)):.3e}` / "
+        f"`{int(no_arb.get('calendar_violations', 0))}`"
+    )
+    lines.append("")
     lines.append("### Interpretation automatique")
     lines.append(_quality_comment(summary))
     lines.append("")
+    if isinstance(smooth_cmp, dict):
+        lines.append("## Oscillation Analysis (Before/After)")
+        lines.append(
+            f"- Baseline IV smoothness (no init): TV=`{float(smooth_cmp.get('baseline_total_variation', 0.0)):.3e}`, "
+            f"max second diff=`{float(smooth_cmp.get('baseline_max_second_diff', 0.0)):.3e}`"
+        )
+        lines.append(
+            f"- Current IV smoothness (linear-density init): TV=`{float(smooth_cmp.get('current_total_variation', 0.0)):.3e}`, "
+            f"max second diff=`{float(smooth_cmp.get('current_max_second_diff', 0.0)):.3e}`"
+        )
+        lines.append(
+            f"- Delta (current - baseline): TV=`{float(smooth_cmp.get('delta_total_variation', 0.0)):.3e}`, "
+            f"max second diff=`{float(smooth_cmp.get('delta_max_second_diff', 0.0)):.3e}`"
+        )
+        if float(smooth_cmp.get("delta_max_second_diff", 0.0)) < 0.0:
+            lines.append(
+                "Conclusion: the IV oscillation level decreases after enabling linear-density initialization."
+            )
+        else:
+            lines.append(
+                "Conclusion: oscillation did not improve globally; inspect per-maturity rows below."
+            )
+        top_rows = _top_smoothness_improvements(smooth_cmp, n=4)
+        if top_rows:
+            lines.append("")
+            lines.append("Most improved maturities (delta max second diff):")
+            for row in top_rows:
+                lines.append(
+                    "- "
+                    f"T={float(row.get('maturity', 0.0)):.6f}, "
+                    f"delta={float(row.get('delta_max_second_diff', 0.0)):.3e}, "
+                    f"baseline strike={_fmt_opt(row.get('baseline_strike_max_second_diff'), '.4f')}, "
+                    f"current strike={_fmt_opt(row.get('current_strike_max_second_diff'), '.4f')}"
+                )
+        lines.append("")
+
     lines.append("## Per Maturity")
-    lines.append("| T | n_quotes | inside | MAE(mid) | RMSE(mid) | MAE(norm) | MAE(iv) |")
-    lines.append("|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append(
+        "| T | n_quotes | inside | bid/ask max | MAE(mid) | MAE(norm) | "
+        "TV(iv) | max d2(iv) | density mass | density mean | proj? | proj L1 |"
+    )
+    lines.append(
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+    )
     for row in per:
-        mae_iv = row.get("mae_iv")
-        mae_iv_txt = f"{float(mae_iv):.3e}" if mae_iv is not None else "-"
+        proj_needed = row.get("linear_projection_needed")
+        proj_needed_txt = (
+            "yes" if proj_needed is True else ("no" if proj_needed is False else "-")
+        )
         lines.append(
             "| "
             f"{float(row.get('maturity', 0.0)):.6f} | "
             f"{int(row.get('n_quotes', 0))} | "
             f"{float(row.get('inside_bid_ask_ratio', 0.0)):.2%} | "
+            f"{float(row.get('max_bid_ask_violation', 0.0)):.3e} | "
             f"{float(row.get('mae_mid', 0.0)):.3e} | "
-            f"{float(row.get('rmse_mid', 0.0)):.3e} | "
             f"{float(row.get('mae_spread_norm', 0.0)):.3f} | "
-            f"{mae_iv_txt} |"
+            f"{_fmt_opt(row.get('iv_total_variation'), '.3e')} | "
+            f"{_fmt_opt(row.get('iv_max_second_diff'), '.3e')} | "
+            f"{float(row.get('density_mass', 0.0)):.6f} | "
+            f"{float(row.get('density_mean', 0.0)):.6f} | "
+            f"{proj_needed_txt} | "
+            f"{_fmt_opt(row.get('linear_projection_l1'), '.3e')} |"
         )
+    lines.append("")
+    lines.append("Linear density discretization used:")
+    lines.append(
+        "- Node-based second-difference on strike grid: "
+        "`p0=1+d0`, `pi=di-d(i-1)` for interior nodes, `pN=-d(N-1)`, "
+        "with `di=(C(i+1)-Ci)/(K(i+1)-Ki)`."
+    )
+    lines.append(
+        "- If raw `p` is infeasible, projection solves `min ||p*-p||_1` under "
+        "`p*>=0`, `sum(p*)=1`, `sum(p* K)=1`."
+    )
     lines.append("")
     lines.append("## Figures And Interpretation")
     if plots_generated:

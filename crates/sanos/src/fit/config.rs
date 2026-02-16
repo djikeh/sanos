@@ -121,6 +121,78 @@ impl Default for LpConfig {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitPriceProxyConfig {
+    Mid,
+    Bid,
+    Ask,
+}
+
+impl Default for InitPriceProxyConfig {
+    fn default() -> Self {
+        InitPriceProxyConfig::Mid
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct InitializationConfig {
+    /// Enable linear-density-based initialization.
+    pub enabled: bool,
+    /// Market quote proxy used to build the raw call curve.
+    pub price_proxy: InitPriceProxyConfig,
+    /// Tolerance used to decide whether the raw density is already feasible.
+    pub feasibility_tol: f64,
+    /// Tolerance used for projection constraints.
+    pub projection_tol: f64,
+    /// Threshold below which atoms are considered numerically zero in diagnostics.
+    pub near_zero_tol: f64,
+    /// L1 anchor strength: adds sum_i |q_i - p*_i| to the LP objective.
+    pub anchor_l1_weight: f64,
+}
+
+impl Default for InitializationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            price_proxy: InitPriceProxyConfig::Mid,
+            feasibility_tol: 1e-8,
+            projection_tol: 1e-10,
+            near_zero_tol: 1e-10,
+            anchor_l1_weight: 1e-3,
+        }
+    }
+}
+
+impl InitializationConfig {
+    pub fn validate(&self) -> SanosResult<()> {
+        for (field, value, min) in [
+            ("initialization.feasibility_tol", self.feasibility_tol, 0.0),
+            ("initialization.projection_tol", self.projection_tol, 0.0),
+            ("initialization.near_zero_tol", self.near_zero_tol, 0.0),
+            (
+                "initialization.anchor_l1_weight",
+                self.anchor_l1_weight,
+                0.0,
+            ),
+        ] {
+            if !value.is_finite() {
+                return Err(SanosError::NonFinite { field, value });
+            }
+            if value < min {
+                return Err(SanosError::InvalidBound {
+                    field,
+                    value,
+                    min,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum LpSolverConfig {
     /// Pure Rust LP solver backend (no external binary required).
@@ -143,6 +215,8 @@ pub struct FitConfig {
     pub objective: ObjectiveConfig,
     pub lp: LpConfig,
     pub solver: LpSolverConfig,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub initialization: InitializationConfig,
 }
 
 impl Default for FitConfig {
@@ -152,6 +226,7 @@ impl Default for FitConfig {
             objective: ObjectiveConfig::default(),
             lp: LpConfig::default(),
             solver: LpSolverConfig::default(),
+            initialization: InitializationConfig::default(),
         }
     }
 }
@@ -159,6 +234,7 @@ impl Default for FitConfig {
 impl FitConfig {
     pub fn validate(&self) -> SanosResult<()> {
         self.objective.validate()?;
+        self.initialization.validate()?;
         Ok(())
     }
 }
