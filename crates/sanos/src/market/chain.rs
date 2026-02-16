@@ -79,3 +79,20 @@ impl OptionChain {
             .position(|q| (q.k.ln() - target).abs() <= tol_log)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn option_chain_sorts_and_rejects_duplicates() {
+        let q1 = CallQuote::new(1.2, 0.10, 0.12, 1.0).unwrap();
+        let q2 = CallQuote::new(0.9, 0.25, 0.27, 1.0).unwrap();
+        let chain = OptionChain::new(0.5, vec![q1, q2]).unwrap();
+        assert!(chain.quotes()[0].k < chain.quotes()[1].k);
+
+        let q3 = CallQuote::new(1.0, 0.20, 0.21, 1.0).unwrap();
+        let q4 = CallQuote::new(1.0, 0.19, 0.22, 1.0).unwrap();
+        assert!(OptionChain::new(0.5, vec![q3, q4]).is_err());
+    }
+}

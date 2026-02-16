@@ -124,3 +124,32 @@ impl MarginalDensity {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marginal_density_validates_mass_and_mean() {
+        let tol = DensityTolerances::from_tol(1e-12).unwrap();
+        let m = MarginalDensity::new(1.0, vec![(0.8, 0.5), (1.2, 0.5)], tol).unwrap();
+        let c_at_1 = m.call(1.0).unwrap();
+        assert!(c_at_1 >= 0.0);
+    }
+
+    #[test]
+    fn marginal_density_rejects_bad_mass() {
+        let tol = DensityTolerances::from_tol(1e-12).unwrap();
+        let err = MarginalDensity::new(1.0, vec![(1.0, 0.9)], tol).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("marginal mass constraint violated"));
+    }
+
+    #[test]
+    fn marginal_density_rejects_bad_mean() {
+        let tol = DensityTolerances::from_tol(1e-12).unwrap();
+        let err = MarginalDensity::new(1.0, vec![(1.1, 1.0)], tol).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("marginal mean constraint violated"));
+    }
+}

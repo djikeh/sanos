@@ -110,3 +110,30 @@ impl YModel for TimeChangedLognormal {
         self.call_eta(maturity, a, b, self.var_scale)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backbone::YModel;
+    use crate::term::PiecewiseLinearCurve;
+
+    #[test]
+    fn time_changed_lognormal_unit_mean_kernel() {
+        let curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
+        let y = TimeChangedLognormal::new(curve, 1.0);
+
+        let v = y.call(1.0, 2.0, 0.0).unwrap();
+        assert!((v - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn time_changed_lognormal_bounds() {
+        let curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
+        let y = TimeChangedLognormal::new(curve, 1.0);
+
+        let a = 1.5;
+        let val = y.call(1.0, a, 1.0).unwrap();
+        assert!(val >= -1e-12);
+        assert!(val <= a + 1e-12);
+    }
+}

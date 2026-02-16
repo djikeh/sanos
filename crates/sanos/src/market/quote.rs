@@ -75,3 +75,17 @@ fn validate_finite(field: &'static str, value: f64) -> SanosResult<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn call_quote_validation() {
+        assert!(CallQuote::new(1.0, 0.2, 0.3, 1.0).is_ok());
+        assert!(CallQuote::new(1.0, 0.4, 0.3, 1.0).is_err());
+        assert!(CallQuote::new(0.0, 0.2, 0.3, 1.0).is_err());
+        assert!(CallQuote::new(1.0, -0.1, 0.3, 1.0).is_err());
+        assert!(CallQuote::new(1.0, 0.2, 1.1, 1.0).is_err());
+    }
+}

@@ -206,3 +206,37 @@ pub fn bs_implied_vol_from_call(
         what: "Enable feature `iv-jaeckel` to use implied volatility inversion.",
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bs_call_var_zero_limit() {
+        let c = bs_call_forward_norm(1.2, 0.0).unwrap();
+        assert!((c - 0.0).abs() < 1e-15);
+
+        let c = bs_call_forward_norm(0.8, 0.0).unwrap();
+        assert!((c - 0.2).abs() < 1e-15);
+    }
+
+    #[test]
+    fn bs_implied_atm_var_roundtrip() {
+        let w = 0.09;
+        let c = bs_call_forward_norm(1.0, w).unwrap();
+        let w2 = bs_implied_atm_var_from_call(c).unwrap();
+        assert!((w - w2).abs() < 1e-10);
+    }
+
+    #[cfg(feature = "iv-jaeckel")]
+    #[test]
+    fn bs_implied_vol_roundtrip() {
+        let k = 1.15;
+        let t = 0.7;
+        let sigma = 0.32;
+        let var = sigma * sigma * t;
+        let price = bs_call_forward_norm(k, var).unwrap();
+        let implied = bs_implied_vol_from_call(price, 1.0, k, t).unwrap();
+        assert!((implied - sigma).abs() < 1e-10);
+    }
+}

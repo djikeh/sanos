@@ -116,3 +116,62 @@ impl SanosSurface {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backbone::TimeChangedLognormal;
+    use crate::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
+    use crate::interp::LinearTime;
+    use crate::term::PiecewiseLinearCurve;
+
+    #[test]
+    fn sanos_surface_matches_nodes_with_linear_time() {
+        let tol = DensityTolerances::from_tol(1e-12).unwrap();
+        let m1 = MarginalDensity::new(0.5, vec![(0.9, 0.5), (1.1, 0.5)], tol).unwrap();
+        let m2 = MarginalDensity::new(1.0, vec![(0.9, 0.5), (1.1, 0.5)], tol).unwrap();
+        let q = MartingaleDensity::new(vec![m2.clone(), m1.clone()]).unwrap();
+
+        let var_curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
+        let y = Arc::new(TimeChangedLognormal::new(var_curve, 1.0));
+
+        let interp = Arc::new(LinearTime) as Arc<dyn crate::interp::TimeInterpolator>;
+        let s = SanosSurface::new(y, q, interp);
+
+        let k = 1.0;
+        let c_at_05 = s.call(0.5, k).unwrap();
+
+        let atoms = m1.atoms();
+        let mut slice = 0.0;
+        for &(ki, qi) in atoms {
+            let v = s.y().call(0.5, ki, k).unwrap();
+            slice += qi * v;
+        }
+
+        assert!((c_at_05 - slice).abs() < 1e-10);
+        assert!(c_at_05 >= -1e-12);
+    }
+
+    #[test]
+    fn sanos_surface_interpolates_between_nodes() {
+        let tol = DensityTolerances::from_tol(1e-12).unwrap();
+        let m1 = MarginalDensity::new(0.5, vec![(0.8, 0.5), (1.2, 0.5)], tol).unwrap();
+        let m2 = MarginalDensity::new(1.0, vec![(0.9, 0.5), (1.1, 0.5)], tol).unwrap();
+        let q = MartingaleDensity::new(vec![m1.clone(), m2.clone()]).unwrap();
+
+        let var_curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
+        let y = Arc::new(TimeChangedLognormal::new(var_curve, 1.0));
+
+        let interp = Arc::new(LinearTime) as Arc<dyn crate::interp::TimeInterpolator>;
+        let s = SanosSurface::new(y, q, interp);
+
+        let k = 1.0;
+        let c0 = s.call(0.5, k).unwrap();
+        let cm = s.call(0.75, k).unwrap();
+        let c1 = s.call(1.0, k).unwrap();
+
+        let lo = c0.min(c1) - 1e-10;
+        let hi = c0.max(c1) + 1e-10;
+        assert!(cm >= lo && cm <= hi);
+    }
+}

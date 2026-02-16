@@ -76,3 +76,33 @@ impl AtmMidPolicy for NearestOrLinearLogMoneyness {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::market::quote::CallQuote;
+
+    #[test]
+    fn atm_mid_policy_exact_or_interpolated_or_nearest() {
+        let p = NearestOrLinearLogMoneyness { tol_log: 1e-12 };
+
+        let q1 = CallQuote::new(0.9, 0.25, 0.27, 1.0).unwrap();
+        let q2 = CallQuote::new(1.0, 0.20, 0.22, 1.0).unwrap();
+        let q3 = CallQuote::new(1.1, 0.16, 0.18, 1.0).unwrap();
+        let chain = OptionChain::new(1.0, vec![q1, q2, q3]).unwrap();
+        let atm = chain.atm_mid(&p).unwrap();
+        assert!((atm - q2.mid()).abs() < 1e-15);
+
+        let q1 = CallQuote::new(0.95, 0.23, 0.25, 1.0).unwrap();
+        let q2 = CallQuote::new(1.05, 0.18, 0.20, 1.0).unwrap();
+        let chain = OptionChain::new(1.0, vec![q1, q2]).unwrap();
+        let atm = chain.atm_mid(&p).unwrap();
+        assert!(atm <= q1.mid() && atm >= q2.mid());
+
+        let q1 = CallQuote::new(1.10, 0.16, 0.18, 1.0).unwrap();
+        let q2 = CallQuote::new(1.30, 0.08, 0.10, 1.0).unwrap();
+        let chain = OptionChain::new(1.0, vec![q1, q2]).unwrap();
+        let atm = chain.atm_mid(&p).unwrap();
+        assert!((atm - q1.mid()).abs() < 1e-15);
+    }
+}

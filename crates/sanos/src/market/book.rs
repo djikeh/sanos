@@ -63,3 +63,22 @@ impl OptionBook {
         Ok(out)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::market::CallQuote;
+
+    #[test]
+    fn option_book_sorts_and_rejects_duplicates() {
+        let q = CallQuote::new(1.0, 0.2, 0.3, 1.0).unwrap();
+        let c1 = OptionChain::new(1.0, vec![q]).unwrap();
+        let c2 = OptionChain::new(0.5, vec![q]).unwrap();
+        let book = OptionBook::new(vec![c1.clone(), c2.clone()]).unwrap();
+        let ts: Vec<f64> = book.maturities().collect();
+        assert!(ts[0] < ts[1]);
+
+        let c3 = OptionChain::new(1.0, vec![q]).unwrap();
+        assert!(OptionBook::new(vec![c1, c3]).is_err());
+    }
+}
