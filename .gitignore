@@ -27,10 +27,10 @@ target
 .cargo/
 .tmp/
 
-# Extra
-data/
-tools/
-
-# Scripts and executables
-sanos.sh
-sanos.cmd
+## Extra
+#data/
+#tools/
+#
+## Scripts and executables
+#sanos.sh
+#sanos.cmd
