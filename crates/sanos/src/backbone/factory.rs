@@ -18,10 +18,22 @@ pub enum BackboneConfig {
 }
 
 pub fn build_backbone(book: &OptionBook, cfg: &BackboneConfig) -> SanosResult<Arc<dyn YModel>> {
+    Ok(build_backbone_with_total_variances(book, cfg)?.0)
+}
+
+/// Build the runtime backbone and return ATM total variances `W(T_j)` on book maturities.
+pub fn build_backbone_with_total_variances(
+    book: &OptionBook,
+    cfg: &BackboneConfig,
+) -> SanosResult<(Arc<dyn YModel>, Vec<f64>)> {
     match cfg {
         BackboneConfig::BsTimeChanged(bs_cfg) => {
             let model = build_time_changed_lognormal_from_book(book, bs_cfg)?;
-            Ok(Arc::new(model))
+            let mut total_variances = Vec::with_capacity(book.len());
+            for chain in book.chains() {
+                total_variances.push(model.var(chain.maturity())?);
+            }
+            Ok((Arc::new(model), total_variances))
         }
     }
 }

@@ -1,6 +1,6 @@
 // src/grid/config.rs
 use crate::error::{SanosError, SanosResult};
-use crate::grid::policy::MarketAnchored;
+use crate::grid::policy::{LogMoneynessQuantiles, MarketAnchored};
 
 /// How to extend the grid beyond market strikes.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -94,6 +94,7 @@ impl GridSizeConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StrikeGridPolicyConfig {
     MarketAnchored(MarketAnchoredGridConfig),
+    LogMoneynessQuantiles(LogMoneynessQuantilesGridConfig),
 }
 
 impl Default for StrikeGridPolicyConfig {
@@ -172,13 +173,146 @@ impl MarketAnchoredGridConfig {
         self.validate()?;
         Ok(MarketAnchored {
             ensure_atm: self.ensure_atm,
-            // NOTE: we will update `MarketAnchored` fields to use the same names/types:
             wings: self.wings,
             atm_refine: self.atm_refine,
             size_control: self.grid_size,
             min_strike: self.min_strike,
             max_strike: self.max_strike,
             min_spacing_log: self.min_spacing_log,
+        })
+    }
+}
+
+/// Serializable config for the runtime `LogMoneynessQuantiles` policy.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LogMoneynessQuantilesGridConfig {
+    pub n: usize,
+    pub left_sigmas: f64,
+    pub right_sigmas: f64,
+    pub alpha_left: f64,
+    pub alpha_right: f64,
+    pub include_market_strikes: bool,
+    pub min_spacing: Option<f64>,
+    pub k_min: Option<f64>,
+    pub k_max: Option<f64>,
+}
+
+impl Default for LogMoneynessQuantilesGridConfig {
+    fn default() -> Self {
+        Self {
+            n: 80,
+            left_sigmas: 4.5,
+            right_sigmas: 3.0,
+            alpha_left: 1.8,
+            alpha_right: 1.2,
+            include_market_strikes: true,
+            min_spacing: None,
+            k_min: None,
+            k_max: None,
+        }
+    }
+}
+
+impl LogMoneynessQuantilesGridConfig {
+    pub fn validate(&self) -> SanosResult<()> {
+        if self.n < 3 {
+            return Err(SanosError::InvalidOrdering { msg: "grid.log_moneyness_quantiles.n must be >= 3" });
+        }
+
+        for (field, value) in [
+            ("grid.log_moneyness_quantiles.left_sigmas", self.left_sigmas),
+            ("grid.log_moneyness_quantiles.right_sigmas", self.right_sigmas),
+            ("grid.log_moneyness_quantiles.alpha_left", self.alpha_left),
+            ("grid.log_moneyness_quantiles.alpha_right", self.alpha_right),
+        ] {
+            if !value.is_finite() {
+                return Err(SanosError::NonFinite { field, value });
+            }
+            if value <= 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field,
+                    value,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+
+        if let Some(min_spacing) = self.min_spacing {
+            if !min_spacing.is_finite() {
+                return Err(SanosError::NonFinite {
+                    field: "grid.log_moneyness_quantiles.min_spacing",
+                    value: min_spacing,
+                });
+            }
+            if min_spacing < 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "grid.log_moneyness_quantiles.min_spacing",
+                    value: min_spacing,
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+
+        if let Some(k_min) = self.k_min {
+            if !k_min.is_finite() {
+                return Err(SanosError::NonFinite {
+                    field: "grid.log_moneyness_quantiles.k_min",
+                    value: k_min,
+                });
+            }
+            if k_min <= 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "grid.log_moneyness_quantiles.k_min",
+                    value: k_min,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+
+        if let Some(k_max) = self.k_max {
+            if !k_max.is_finite() {
+                return Err(SanosError::NonFinite {
+                    field: "grid.log_moneyness_quantiles.k_max",
+                    value: k_max,
+                });
+            }
+            if k_max <= 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "grid.log_moneyness_quantiles.k_max",
+                    value: k_max,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+
+        if let (Some(k_min), Some(k_max)) = (self.k_min, self.k_max) {
+            if k_max <= k_min {
+                return Err(SanosError::InvalidOrdering {
+                    msg: "grid.log_moneyness_quantiles.k_max must be > k_min",
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn to_runtime(&self) -> SanosResult<LogMoneynessQuantiles> {
+        self.validate()?;
+        Ok(LogMoneynessQuantiles {
+            n: self.n,
+            left_sigmas: self.left_sigmas,
+            right_sigmas: self.right_sigmas,
+            alpha_left: self.alpha_left,
+            alpha_right: self.alpha_right,
+            include_market_strikes: self.include_market_strikes,
+            min_spacing: self.min_spacing,
+            k_min: self.k_min,
+            k_max: self.k_max,
         })
     }
 }
@@ -255,5 +389,62 @@ mod tests {
         assert_eq!(runtime.min_strike, cfg.min_strike);
         assert_eq!(runtime.max_strike, cfg.max_strike);
         assert_eq!(runtime.min_spacing_log, cfg.min_spacing_log);
+    }
+
+    #[test]
+    fn log_moneyness_quantiles_validate_rejects_alpha_not_positive() {
+        let cfg = LogMoneynessQuantilesGridConfig {
+            alpha_left: 0.0,
+            ..LogMoneynessQuantilesGridConfig::default()
+        };
+        let err = cfg.validate().unwrap_err();
+        match err {
+            SanosError::InvalidBound { field, .. } => {
+                assert_eq!(field, "grid.log_moneyness_quantiles.alpha_left")
+            }
+            _ => panic!("unexpected error variant: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn log_moneyness_quantiles_validate_rejects_bad_caps() {
+        let cfg = LogMoneynessQuantilesGridConfig {
+            k_min: Some(1.2),
+            k_max: Some(1.2),
+            ..LogMoneynessQuantilesGridConfig::default()
+        };
+        let err = cfg.validate().unwrap_err();
+        match err {
+            SanosError::InvalidOrdering { msg } => {
+                assert_eq!(msg, "grid.log_moneyness_quantiles.k_max must be > k_min")
+            }
+            _ => panic!("unexpected error variant: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn log_moneyness_quantiles_to_runtime_maps_fields() {
+        let cfg = LogMoneynessQuantilesGridConfig {
+            n: 41,
+            left_sigmas: 5.0,
+            right_sigmas: 2.8,
+            alpha_left: 2.0,
+            alpha_right: 1.3,
+            include_market_strikes: false,
+            min_spacing: Some(1e-4),
+            k_min: Some(0.2),
+            k_max: Some(4.0),
+        };
+
+        let runtime = cfg.to_runtime().unwrap();
+        assert_eq!(runtime.n, cfg.n);
+        assert_eq!(runtime.left_sigmas, cfg.left_sigmas);
+        assert_eq!(runtime.right_sigmas, cfg.right_sigmas);
+        assert_eq!(runtime.alpha_left, cfg.alpha_left);
+        assert_eq!(runtime.alpha_right, cfg.alpha_right);
+        assert_eq!(runtime.include_market_strikes, cfg.include_market_strikes);
+        assert_eq!(runtime.min_spacing, cfg.min_spacing);
+        assert_eq!(runtime.k_min, cfg.k_min);
+        assert_eq!(runtime.k_max, cfg.k_max);
     }
 }

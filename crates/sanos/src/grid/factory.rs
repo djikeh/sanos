@@ -1,7 +1,7 @@
 // src/grid/factory.rs
 use crate::error::SanosResult;
 use crate::grid::config::StrikeGridPolicyConfig;
-use crate::grid::policy::{MarketAnchored, StrikeGridPolicy};
+use crate::grid::policy::{LogMoneynessQuantiles, MarketAnchored, StrikeGridPolicy};
 use crate::grid::StrikeGrid;
 use crate::market::{AtmMidPolicy, OptionBook};
 
@@ -10,10 +10,23 @@ pub fn build_strike_grids(
     atm: &dyn AtmMidPolicy,
     cfg: &StrikeGridPolicyConfig,
 ) -> SanosResult<Vec<StrikeGrid>> {
+    build_strike_grids_with_variances(book, atm, cfg, None)
+}
+
+pub fn build_strike_grids_with_variances(
+    book: &OptionBook,
+    atm: &dyn AtmMidPolicy,
+    cfg: &StrikeGridPolicyConfig,
+    total_variances: Option<&[f64]>,
+) -> SanosResult<Vec<StrikeGrid>> {
     match cfg {
         StrikeGridPolicyConfig::MarketAnchored(c) => {
             let policy: MarketAnchored = c.to_runtime()?;
-            policy.build(book, atm)
+            policy.build(book, atm, total_variances)
+        }
+        StrikeGridPolicyConfig::LogMoneynessQuantiles(c) => {
+            let policy: LogMoneynessQuantiles = c.to_runtime()?;
+            policy.build(book, atm, total_variances)
         }
     }
 }
@@ -23,7 +36,8 @@ mod tests {
     use super::*;
     use crate::error::SanosError;
     use crate::grid::config::{
-        AtmRefineConfig, GridSizeConfig, MarketAnchoredGridConfig, WingsConfig,
+        AtmRefineConfig, GridSizeConfig, LogMoneynessQuantilesGridConfig, MarketAnchoredGridConfig,
+        WingsConfig,
     };
     use crate::market::{CallQuote, NearestOrLinearLogMoneyness, OptionChain};
 
@@ -75,6 +89,24 @@ mod tests {
         match err {
             SanosError::InvalidBound { field, .. } => assert_eq!(field, "grid.wings.ratio"),
             _ => panic!("unexpected error variant: {err:?}"),
+        }
+    }
+
+    #[test]
+    fn build_strike_grids_dispatches_log_moneyness_quantiles() {
+        let book = sample_book();
+        let atm = NearestOrLinearLogMoneyness::default();
+        let cfg = StrikeGridPolicyConfig::LogMoneynessQuantiles(
+            LogMoneynessQuantilesGridConfig::default(),
+        );
+        let total_variances = vec![0.04, 0.09];
+
+        let grids =
+            build_strike_grids_with_variances(&book, &atm, &cfg, Some(&total_variances)).unwrap();
+        assert_eq!(grids.len(), book.len());
+        for g in grids {
+            assert!(g.strikes().len() >= 3);
+            assert!(g.strikes().windows(2).all(|w| w[1] > w[0]));
         }
     }
 }

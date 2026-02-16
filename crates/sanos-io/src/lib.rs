@@ -338,7 +338,8 @@ pub fn surface_snapshot_v1_to_sanos_surface(snap: &SurfaceSnapshotV1) -> Result<
         })
         .collect::<std::result::Result<Vec<_>, _>>()
         .context("invalid reconstruction.marginals")?;
-    let q = MartingaleDensity::new(marginals).context("invalid reconstructed martingale density")?;
+    let q =
+        MartingaleDensity::new(marginals).context("invalid reconstructed martingale density")?;
     let interp = snap
         .reconstruction
         .time_interp
@@ -355,7 +356,7 @@ mod tests {
     use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
     use sanos::calibration::CalibrationConfig;
     use sanos::fit::FitConfig;
-    use sanos::grid::StrikeGridPolicyConfig;
+    use sanos::grid::{LogMoneynessQuantilesGridConfig, StrikeGridPolicyConfig};
     use sanos::interp::TimeInterpConfig;
     use std::fs;
     use std::path::PathBuf;
@@ -366,7 +367,11 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("sanos_io_{stem}_{}_{}.json", std::process::id(), nanos))
+        std::env::temp_dir().join(format!(
+            "sanos_io_{stem}_{}_{}.json",
+            std::process::id(),
+            nanos
+        ))
     }
 
     fn write_temp_file(stem: &str, raw: &str) -> PathBuf {
@@ -565,7 +570,9 @@ mod tests {
     fn load_calibration_config_roundtrip() {
         let cfg = CalibrationConfig {
             backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
-            grid: StrikeGridPolicyConfig::default(),
+            grid: StrikeGridPolicyConfig::LogMoneynessQuantiles(
+                LogMoneynessQuantilesGridConfig::default(),
+            ),
             fit: FitConfig::default(),
             time_interp: TimeInterpConfig::default(),
         };

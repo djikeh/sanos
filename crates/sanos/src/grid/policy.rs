@@ -1,15 +1,28 @@
-// src/grid/policy.rs
+use log::{debug, info};
+use statrs::distribution::{ContinuousCDF, Normal};
+
+use crate::backbone::bs::bs_implied_atm_var_from_call;
 use crate::error::{SanosError, SanosResult};
 use crate::grid::config::{AtmRefineConfig, GridSizeConfig, WingsConfig};
 use crate::grid::StrikeGrid;
 use crate::market::{AtmMidPolicy, OptionBook};
 
+const PROB_EPS: f64 = 1e-12;
+const UNIQUE_TOL: f64 = 1e-12;
+const TINY_SIGMA: f64 = 1e-10;
+const TINY_WINDOW_HALF_WIDTH: f64 = 0.05;
+
 pub trait StrikeGridPolicy: Send + Sync {
-    fn build(&self, book: &OptionBook, atm: &dyn AtmMidPolicy) -> SanosResult<Vec<StrikeGrid>>;
+    fn build(
+        &self,
+        book: &OptionBook,
+        atm: &dyn AtmMidPolicy,
+        total_variances: Option<&[f64]>,
+    ) -> SanosResult<Vec<StrikeGrid>>;
 }
 
 /// Market-anchored strike grid:
-/// K_j = market_strikes ∪ {1} ∪ wings ∪ (optional ATM refine), then cleaned.
+/// K_j = market_strikes U {1} U wings U (optional ATM refine), then cleaned.
 #[derive(Debug, Clone, Copy)]
 pub struct MarketAnchored {
     pub ensure_atm: bool,
@@ -59,7 +72,9 @@ impl MarketAnchored {
             });
         }
         if self.max_strike <= self.min_strike {
-            return Err(SanosError::InvalidOrdering { msg: "max_strike must be > min_strike" });
+            return Err(SanosError::InvalidOrdering {
+                msg: "max_strike must be > min_strike",
+            });
         }
         if self.min_spacing_log < 0.0 {
             return Err(SanosError::InvalidBound {
@@ -75,7 +90,12 @@ impl MarketAnchored {
 }
 
 impl StrikeGridPolicy for MarketAnchored {
-    fn build(&self, book: &OptionBook, _atm: &dyn AtmMidPolicy) -> SanosResult<Vec<StrikeGrid>> {
+    fn build(
+        &self,
+        book: &OptionBook,
+        _atm: &dyn AtmMidPolicy,
+        _total_variances: Option<&[f64]>,
+    ) -> SanosResult<Vec<StrikeGrid>> {
         self.validate()?;
 
         let mut grids = Vec::with_capacity(book.len());
@@ -84,10 +104,14 @@ impl StrikeGridPolicy for MarketAnchored {
             let t = chain.maturity();
             let market_strikes: Vec<f64> = chain.quotes().iter().map(|q| q.k).collect();
 
-            let k_min = *market_strikes.first().ok_or(SanosError::EmptyCollection { what: "market strikes" })?;
-            let k_max = *market_strikes.last().ok_or(SanosError::EmptyCollection { what: "market strikes" })?;
+            let k_min = *market_strikes
+                .first()
+                .ok_or(SanosError::EmptyCollection { what: "market strikes" })?;
+            let k_max = *market_strikes
+                .last()
+                .ok_or(SanosError::EmptyCollection { what: "market strikes" })?;
 
-            // Build candidate list
+            // Build candidate list.
             let mut cand: Vec<f64> = Vec::new();
             cand.extend(market_strikes.iter().copied());
 
@@ -95,7 +119,7 @@ impl StrikeGridPolicy for MarketAnchored {
                 cand.push(1.0);
             }
 
-            // Wings
+            // Wings.
             let r = self.wings.ratio;
             for p in 1..=self.wings.n_left {
                 cand.push(k_min / r.powi(p as i32));
@@ -104,7 +128,7 @@ impl StrikeGridPolicy for MarketAnchored {
                 cand.push(k_max * r.powi(p as i32));
             }
 
-            // ATM refine (around 1 in log space)
+            // ATM refine (around 1 in log-space).
             if self.atm_refine.enabled {
                 let d = self.atm_refine.delta_log;
                 for s in 1..=self.atm_refine.steps {
@@ -114,7 +138,6 @@ impl StrikeGridPolicy for MarketAnchored {
                 }
             }
 
-            // Clean candidates
             let strikes = clean_strikes(
                 cand,
                 self.min_strike,
@@ -123,8 +146,6 @@ impl StrikeGridPolicy for MarketAnchored {
                 self.ensure_atm,
             )?;
 
-            // Size control (MVP):
-            // If too many points, we keep market strikes first and then downsample the rest.
             let strikes = enforce_size_control(
                 &strikes,
                 &market_strikes,
@@ -140,6 +161,486 @@ impl StrikeGridPolicy for MarketAnchored {
     }
 }
 
+/// Log-moneyness quantile strike grid with asymmetric left/right shaping.
+#[derive(Debug, Clone, Copy)]
+pub struct LogMoneynessQuantiles {
+    pub n: usize,
+    pub left_sigmas: f64,
+    pub right_sigmas: f64,
+    pub alpha_left: f64,
+    pub alpha_right: f64,
+    pub include_market_strikes: bool,
+    pub min_spacing: Option<f64>,
+    pub k_min: Option<f64>,
+    pub k_max: Option<f64>,
+}
+
+impl Default for LogMoneynessQuantiles {
+    fn default() -> Self {
+        Self {
+            n: 80,
+            left_sigmas: 4.5,
+            right_sigmas: 3.0,
+            alpha_left: 1.8,
+            alpha_right: 1.2,
+            include_market_strikes: true,
+            min_spacing: None,
+            k_min: None,
+            k_max: None,
+        }
+    }
+}
+
+impl LogMoneynessQuantiles {
+    fn validate(&self) -> SanosResult<()> {
+        if self.n < 3 {
+            return Err(SanosError::InvalidOrdering {
+                msg: "log_moneyness_quantiles.n must be >= 3",
+            });
+        }
+        for (field, value) in [
+            ("log_moneyness_quantiles.left_sigmas", self.left_sigmas),
+            ("log_moneyness_quantiles.right_sigmas", self.right_sigmas),
+            ("log_moneyness_quantiles.alpha_left", self.alpha_left),
+            ("log_moneyness_quantiles.alpha_right", self.alpha_right),
+        ] {
+            if !value.is_finite() {
+                return Err(SanosError::NonFinite { field, value });
+            }
+            if value <= 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field,
+                    value,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+
+        if let Some(min_spacing) = self.min_spacing {
+            if !min_spacing.is_finite() {
+                return Err(SanosError::NonFinite {
+                    field: "log_moneyness_quantiles.min_spacing",
+                    value: min_spacing,
+                });
+            }
+            if min_spacing < 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "log_moneyness_quantiles.min_spacing",
+                    value: min_spacing,
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+
+        if let Some(k_min) = self.k_min {
+            if !k_min.is_finite() {
+                return Err(SanosError::NonFinite {
+                    field: "log_moneyness_quantiles.k_min",
+                    value: k_min,
+                });
+            }
+            if k_min <= 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "log_moneyness_quantiles.k_min",
+                    value: k_min,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+
+        if let Some(k_max) = self.k_max {
+            if !k_max.is_finite() {
+                return Err(SanosError::NonFinite {
+                    field: "log_moneyness_quantiles.k_max",
+                    value: k_max,
+                });
+            }
+            if k_max <= 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "log_moneyness_quantiles.k_max",
+                    value: k_max,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+
+        if let (Some(k_min), Some(k_max)) = (self.k_min, self.k_max) {
+            if k_max <= k_min {
+                return Err(SanosError::InvalidOrdering {
+                    msg: "log_moneyness_quantiles.k_max must be > k_min",
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl StrikeGridPolicy for LogMoneynessQuantiles {
+    fn build(
+        &self,
+        book: &OptionBook,
+        atm: &dyn AtmMidPolicy,
+        total_variances: Option<&[f64]>,
+    ) -> SanosResult<Vec<StrikeGrid>> {
+        self.validate()?;
+
+        if let Some(vars) = total_variances {
+            if vars.len() != book.len() {
+                return Err(SanosError::InvalidOrdering {
+                    msg: "total_variances length must match number of book maturities",
+                });
+            }
+        }
+
+        let normal = standard_normal()?;
+        let mut grids = Vec::with_capacity(book.len());
+
+        for (j, chain) in book.chains().iter().enumerate() {
+            let t = chain.maturity();
+            let market_strikes: Vec<f64> = chain.quotes().iter().map(|q| q.k).collect();
+
+            let total_variance = match total_variances.and_then(|vars| vars.get(j).copied()) {
+                Some(w) => w,
+                None => {
+                    let atm_mid = chain.atm_mid(atm)?;
+                    bs_implied_atm_var_from_call(atm_mid)?
+                }
+            };
+            if !total_variance.is_finite() {
+                return Err(SanosError::NonFinite {
+                    field: "total_variance",
+                    value: total_variance,
+                });
+            }
+            if total_variance < 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "total_variance",
+                    value: total_variance,
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
+
+            let sigma = total_variance.sqrt();
+            let tiny_sigma_fallback = sigma <= TINY_SIGMA;
+            let (x_min, x_max, sigma_for_mapping, mu) = if tiny_sigma_fallback {
+                let sigma_floor = (TINY_WINDOW_HALF_WIDTH
+                    / self.left_sigmas.max(self.right_sigmas).max(1.0))
+                .max(1e-6);
+                let mu = -0.5 * sigma * sigma;
+                (
+                    -TINY_WINDOW_HALF_WIDTH,
+                    TINY_WINDOW_HALF_WIDTH,
+                    sigma_floor,
+                    mu,
+                )
+            } else {
+                let mu = -0.5 * sigma * sigma;
+                (
+                    -self.left_sigmas * sigma,
+                    self.right_sigmas * sigma,
+                    sigma,
+                    mu,
+                )
+            };
+
+            let mut quantiles = generate_quantile_strikes(
+                self.n,
+                self.alpha_left,
+                self.alpha_right,
+                mu,
+                sigma_for_mapping,
+                x_min,
+                x_max,
+                &normal,
+            );
+            quantiles = sort_and_dedup_strikes(quantiles);
+            quantiles = enforce_min_spacing(quantiles, self.min_spacing);
+
+            let market_injected = if self.include_market_strikes {
+                market_strikes.len()
+            } else {
+                0
+            };
+
+            let merged = if self.include_market_strikes {
+                merge_market_and_quantiles(
+                    &market_strikes,
+                    &quantiles,
+                    self.n,
+                    self.min_spacing.unwrap_or(0.0).max(UNIQUE_TOL),
+                )
+            } else if quantiles.len() > self.n {
+                pick_evenly_spaced(&quantiles, self.n)
+            } else {
+                quantiles
+            };
+
+            let merged = sort_and_dedup_strikes(merged);
+            let points_after_dedup_downsample = merged.len();
+
+            let mut final_strikes = apply_hard_caps(merged, self.k_min, self.k_max);
+            final_strikes = sort_and_dedup_strikes(final_strikes);
+
+            if final_strikes.len() < 3 {
+                debug!(
+                    "LogMoneynessQuantiles fallback activated at T={} (n_after_caps={})",
+                    t,
+                    final_strikes.len()
+                );
+                final_strikes = fallback_safe_grid(
+                    &market_strikes,
+                    self.include_market_strikes,
+                    self.k_min,
+                    self.k_max,
+                );
+                final_strikes = sort_and_dedup_strikes(final_strikes);
+            }
+
+            if final_strikes.len() < 3 {
+                return Err(SanosError::InvalidOrdering {
+                    msg: "log-moneyness quantile grid too small after fallback",
+                });
+            }
+
+            info!(
+                "LogMoneynessQuantiles grid: T={} sigma={} window=[{},{}] n={} market_injected={} after_dedup_downsample={}",
+                t,
+                sigma,
+                x_min,
+                x_max,
+                final_strikes.len(),
+                market_injected,
+                points_after_dedup_downsample
+            );
+            debug!(
+                "LogMoneynessQuantiles details: T={} target_n={} tiny_sigma_fallback={} used_backbone_variance={}",
+                t,
+                self.n,
+                tiny_sigma_fallback,
+                total_variances.is_some()
+            );
+
+            grids.push(StrikeGrid::new(t, final_strikes)?);
+        }
+
+        Ok(grids)
+    }
+}
+
+fn standard_normal() -> SanosResult<Normal> {
+    Normal::new(0.0, 1.0).map_err(|e| SanosError::External {
+        msg: format!("failed to build Normal(0,1): {e}"),
+    })
+}
+
+fn shaped_probability(i: usize, n: usize, alpha_left: f64, alpha_right: f64) -> f64 {
+    let u0 = ((i as f64) + 0.5) / (n as f64);
+    if i < n / 2 {
+        0.5 * (2.0 * u0).powf(alpha_left)
+    } else {
+        1.0 - 0.5 * (2.0 * (1.0 - u0)).powf(alpha_right)
+    }
+}
+
+fn generate_quantile_strikes(
+    n: usize,
+    alpha_left: f64,
+    alpha_right: f64,
+    mu: f64,
+    sigma: f64,
+    x_min: f64,
+    x_max: f64,
+    normal: &Normal,
+) -> Vec<f64> {
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let u = shaped_probability(i, n, alpha_left, alpha_right).clamp(PROB_EPS, 1.0 - PROB_EPS);
+        let z = normal.inverse_cdf(u);
+        let x = (mu + sigma * z).clamp(x_min, x_max);
+        out.push(x.exp());
+    }
+    out
+}
+
+fn sort_and_dedup_strikes(mut strikes: Vec<f64>) -> Vec<f64> {
+    strikes.retain(|k| k.is_finite() && *k > 0.0);
+    strikes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    strikes.dedup_by(|a, b| (*a - *b).abs() <= UNIQUE_TOL);
+    strikes
+}
+
+fn enforce_min_spacing(strikes: Vec<f64>, min_spacing: Option<f64>) -> Vec<f64> {
+    let spacing = match min_spacing {
+        Some(v) if v > 0.0 => v,
+        _ => return strikes,
+    };
+
+    let mut out = Vec::with_capacity(strikes.len());
+    for k in strikes {
+        if out.is_empty() {
+            out.push(k);
+            continue;
+        }
+        let last = *out.last().unwrap();
+        if k - last >= spacing {
+            out.push(k);
+        }
+    }
+    out
+}
+
+fn apply_hard_caps(strikes: Vec<f64>, k_min: Option<f64>, k_max: Option<f64>) -> Vec<f64> {
+    let mut out = Vec::with_capacity(strikes.len());
+    for mut k in strikes {
+        if let Some(lo) = k_min {
+            if k < lo {
+                k = lo;
+            }
+        }
+        if let Some(hi) = k_max {
+            if k > hi {
+                k = hi;
+            }
+        }
+        out.push(k);
+    }
+    out
+}
+
+fn merge_market_and_quantiles(
+    market_strikes: &[f64],
+    quantile_strikes: &[f64],
+    target_n: usize,
+    distance_tol: f64,
+) -> Vec<f64> {
+    let market = sort_and_dedup_strikes(market_strikes.to_vec());
+    if market.len() >= target_n {
+        return market;
+    }
+
+    let mut quantile_candidates = Vec::with_capacity(quantile_strikes.len());
+    for &k in quantile_strikes {
+        if !is_too_close_to_any_sorted(&market, k, distance_tol) {
+            quantile_candidates.push(k);
+        }
+    }
+
+    let slots = target_n.saturating_sub(market.len());
+    let extras = pick_evenly_spaced(&quantile_candidates, slots);
+
+    let mut merged = market;
+    merged.extend(extras);
+    sort_and_dedup_strikes(merged)
+}
+
+fn is_too_close_to_any_sorted(values: &[f64], x: f64, tol: f64) -> bool {
+    if values.is_empty() {
+        return false;
+    }
+
+    let idx = values.partition_point(|v| *v < x);
+    if idx < values.len() && (values[idx] - x).abs() <= tol {
+        return true;
+    }
+    if idx > 0 && (values[idx - 1] - x).abs() <= tol {
+        return true;
+    }
+    false
+}
+
+fn pick_evenly_spaced(values: &[f64], n: usize) -> Vec<f64> {
+    if n == 0 || values.is_empty() {
+        return Vec::new();
+    }
+    if values.len() <= n {
+        return values.to_vec();
+    }
+    if n == 1 {
+        return vec![values[values.len() / 2]];
+    }
+
+    let mut out = Vec::with_capacity(n);
+    let len_minus_one = values.len() - 1;
+    let n_minus_one = n - 1;
+
+    let mut last_idx: Option<usize> = None;
+    for i in 0..n {
+        let idx = i * len_minus_one / n_minus_one;
+        if last_idx == Some(idx) {
+            continue;
+        }
+        out.push(values[idx]);
+        last_idx = Some(idx);
+    }
+
+    if out.len() < n {
+        for &k in values {
+            if out.len() == n {
+                break;
+            }
+            if !out.iter().any(|x| (*x - k).abs() <= UNIQUE_TOL) {
+                out.push(k);
+            }
+        }
+        out.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    }
+
+    out
+}
+
+fn fallback_safe_grid(
+    market_strikes: &[f64],
+    include_market_strikes: bool,
+    k_min: Option<f64>,
+    k_max: Option<f64>,
+) -> Vec<f64> {
+    let mut out = Vec::new();
+    if include_market_strikes {
+        out.extend(market_strikes.iter().copied());
+    }
+    out.extend([(-0.1_f64).exp(), 1.0, (0.1_f64).exp()]);
+    if let Some(&k0) = market_strikes.first() {
+        out.push(k0);
+    }
+    if let Some(&k1) = market_strikes.last() {
+        out.push(k1);
+    }
+
+    out = apply_hard_caps(out, k_min, k_max);
+    out = sort_and_dedup_strikes(out);
+    if out.len() >= 3 {
+        return out;
+    }
+
+    let (lo, hi) = fallback_bounds(k_min, k_max, market_strikes);
+    let mid = (lo * hi).sqrt();
+    sort_and_dedup_strikes(vec![lo, mid, hi])
+}
+
+fn fallback_bounds(k_min: Option<f64>, k_max: Option<f64>, market_strikes: &[f64]) -> (f64, f64) {
+    let (default_lo, default_hi) = if let (Some(&lo), Some(&hi)) =
+        (market_strikes.first(), market_strikes.last())
+    {
+        (0.95 * lo, 1.05 * hi)
+    } else {
+        (0.8, 1.2)
+    };
+
+    let mut lo = k_min.unwrap_or(default_lo.max(f64::MIN_POSITIVE));
+    let mut hi = k_max.unwrap_or(default_hi.max(lo * 1.1));
+    if hi <= lo {
+        hi = lo * 1.1;
+    }
+    lo = lo.max(f64::MIN_POSITIVE);
+    (lo, hi)
+}
+
 /// Clamp, sort, unique, enforce min log spacing, and ensure ATM if requested.
 fn clean_strikes(
     mut strikes: Vec<f64>,
@@ -148,25 +649,22 @@ fn clean_strikes(
     min_spacing_log: f64,
     ensure_atm: bool,
 ) -> SanosResult<Vec<f64>> {
-    // Filter finite and clamp
     let mut filtered: Vec<f64> = Vec::with_capacity(strikes.len());
     for k in strikes.drain(..) {
-        if !k.is_finite() {
-            continue;
-        }
-        if k <= 0.0 {
+        if !k.is_finite() || k <= 0.0 {
             continue;
         }
         let kk = k.clamp(min_strike, max_strike);
         filtered.push(kk);
     }
     if filtered.is_empty() {
-        return Err(SanosError::EmptyCollection { what: "cleaned strikes" });
+        return Err(SanosError::EmptyCollection {
+            what: "cleaned strikes",
+        });
     }
 
     filtered.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-    // Enforce uniqueness with log-spacing threshold
     let mut out: Vec<f64> = Vec::with_capacity(filtered.len());
     for k in filtered {
         if out.is_empty() {
@@ -180,7 +678,6 @@ fn clean_strikes(
         }
     }
 
-    // Ensure ATM
     if ensure_atm {
         let mut has_atm = false;
         let tol = min_spacing_log.max(1e-12);
@@ -193,7 +690,6 @@ fn clean_strikes(
         if !has_atm {
             out.push(1.0);
             out.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            // Re-unique after inserting
             let mut out2: Vec<f64> = Vec::with_capacity(out.len());
             for k in out {
                 if out2.is_empty() {
@@ -211,7 +707,9 @@ fn clean_strikes(
     }
 
     if out.len() < 2 {
-        return Err(SanosError::InvalidOrdering { msg: "strike grid too small after cleaning" });
+        return Err(SanosError::InvalidOrdering {
+            msg: "strike grid too small after cleaning",
+        });
     }
 
     Ok(out)
@@ -220,9 +718,6 @@ fn clean_strikes(
 /// MVP size control:
 /// - If keep_all_market_strikes = true: keep all market strikes
 /// - Else: allow thinning everything.
-/// Strategy:
-/// 1) Keep market strikes (exact float equality here; ok because they come from the same source vector)
-/// 2) Add extra strikes by increasing log-spacing until we meet max_points.
 fn enforce_size_control(
     strikes: &[f64],
     market_strikes: &[f64],
@@ -243,13 +738,15 @@ fn enforce_size_control(
     let mut protected = vec![false; strikes.len()];
     if keep_all_market_strikes {
         for (i, &k) in strikes.iter().enumerate() {
-            if market_strikes.binary_search_by(|x| x.partial_cmp(&k).unwrap()).is_ok() {
+            if market_strikes
+                .binary_search_by(|x| x.partial_cmp(&k).unwrap())
+                .is_ok()
+            {
                 protected[i] = true;
             }
         }
     }
 
-    // Start with protected (market) points
     let mut out: Vec<f64> = Vec::new();
     for (i, &k) in strikes.iter().enumerate() {
         if protected[i] {
@@ -258,17 +755,13 @@ fn enforce_size_control(
     }
     out.sort_by(|a, b| a.partial_cmp(b).unwrap());
 
-    // If already within limit, done
     if out.len() <= max_points {
         return Ok(out);
     }
 
-    // Otherwise, thin even protected points (rare), by increasing spacing.
-    // MVP: keep endpoints and ATM if present, then enforce spacing.
     let mut must_keep = Vec::new();
     must_keep.push(strikes[0]);
     must_keep.push(strikes[strikes.len() - 1]);
-    // try keep ATM
     for &k in strikes {
         if (k.ln()).abs() <= min_spacing_log.max(1e-12) {
             must_keep.push(k);
@@ -276,19 +769,15 @@ fn enforce_size_control(
         }
     }
     must_keep.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    must_keep.dedup_by(|a, b| (*a - *b).abs() == 0.0);
+    must_keep.dedup_by(|a, b| (*a - *b).abs() <= 0.0);
 
-    // Increase spacing until size is <= max_points
     let mut spacing = min_spacing_log.max(1e-6);
     loop {
         let mut candidate: Vec<f64> = Vec::new();
         candidate.extend(must_keep.iter().copied());
-
-        for &k in strikes {
-            candidate.push(k);
-        }
+        candidate.extend(strikes.iter().copied());
         candidate.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        candidate.dedup_by(|a, b| (*a - *b).abs() == 0.0);
+        candidate.dedup_by(|a, b| (*a - *b).abs() <= 0.0);
 
         let mut filtered: Vec<f64> = Vec::new();
         for k in candidate {
@@ -302,15 +791,12 @@ fn enforce_size_control(
             }
         }
 
-        // Ensure must_keep are still present (they should be due to merging first, but keep safe)
-        // If too big, increase spacing; else accept.
         if filtered.len() <= max_points {
             return Ok(filtered);
         }
 
         spacing *= 1.25;
         if spacing > 1.0 {
-            // Extremely aggressive thinning; accept last filtered even if large to avoid infinite loop.
             return Ok(filtered);
         }
     }
@@ -339,6 +825,17 @@ mod tests {
         )
         .unwrap();
         OptionBook::new(vec![c2, c1]).unwrap()
+    }
+
+    fn median(mut values: Vec<f64>) -> f64 {
+        assert!(!values.is_empty());
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mid = values.len() / 2;
+        if values.len() % 2 == 1 {
+            values[mid]
+        } else {
+            0.5 * (values[mid - 1] + values[mid])
+        }
     }
 
     #[test]
@@ -385,7 +882,7 @@ mod tests {
         let atm = NearestOrLinearLogMoneyness::default();
         let policy = MarketAnchored::default();
 
-        let grids = policy.build(&book, &atm).unwrap();
+        let grids = policy.build(&book, &atm, None).unwrap();
         assert_eq!(grids.len(), book.len());
         for g in grids {
             assert!(g.strikes().len() >= 2);
@@ -403,10 +900,46 @@ mod tests {
             ..MarketAnchored::default()
         };
 
-        let err = policy.build(&book, &atm).unwrap_err();
+        let err = policy.build(&book, &atm, None).unwrap_err();
         match err {
             SanosError::InvalidBound { field, .. } => assert_eq!(field, "min_spacing_log"),
             _ => panic!("unexpected error variant: {err:?}"),
         }
+    }
+
+    #[test]
+    fn log_moneyness_quantiles_shape_is_monotone_and_left_denser() {
+        let normal = standard_normal().unwrap();
+        let sigma = 0.22;
+        let mu = -0.5 * sigma * sigma;
+        let strikes = generate_quantile_strikes(151, 1.8, 1.2, mu, sigma, -4.5 * sigma, 3.0 * sigma, &normal);
+        let strikes = sort_and_dedup_strikes(strikes);
+
+        assert!(strikes.windows(2).all(|w| w[1] > w[0]));
+
+        let left_spacings: Vec<f64> = strikes
+            .windows(2)
+            .filter_map(|w| {
+                if w[1] <= 1.0 {
+                    Some(w[1] - w[0])
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let right_spacings: Vec<f64> = strikes
+            .windows(2)
+            .filter_map(|w| {
+                if w[0] >= 1.0 {
+                    Some(w[1] - w[0])
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(!left_spacings.is_empty());
+        assert!(!right_spacings.is_empty());
+        assert!(median(left_spacings) < median(right_spacings));
     }
 }

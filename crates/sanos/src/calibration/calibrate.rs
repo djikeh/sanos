@@ -1,4 +1,4 @@
-use crate::backbone::{build_backbone, BackboneConfig};
+use crate::backbone::{build_backbone_with_total_variances, BackboneConfig};
 use crate::density::DensityTolerances;
 use crate::error::SanosResult;
 use crate::fit::lp::builder::{LpBuilder, SanosLpBuilder};
@@ -6,7 +6,7 @@ use crate::fit::{
     add_l1_density_anchor, build_kernels, build_linear_density_initialization, extract_density,
     solve_lp, LinearDensityInitialization,
 };
-use crate::grid::build_strike_grids;
+use crate::grid::build_strike_grids_with_variances;
 use crate::market::OptionBook;
 use crate::surface::SanosSurface;
 
@@ -31,13 +31,18 @@ pub fn calibrate_with_stats(
     cfg.fit.validate()?;
 
     // 1) backbone
-    let y = build_backbone(book, &cfg.backbone)?;
+    let (y, total_variances) = build_backbone_with_total_variances(book, &cfg.backbone)?;
 
     // 2) strike grids (reuse existing ATM policy config build)
     let atm_policy = match &cfg.backbone {
         BackboneConfig::BsTimeChanged(bs_cfg) => bs_cfg.atm_policy.build()?,
     };
-    let grids = build_strike_grids(book, atm_policy.as_ref(), &cfg.grid)?;
+    let grids = build_strike_grids_with_variances(
+        book,
+        atm_policy.as_ref(),
+        &cfg.grid,
+        Some(&total_variances),
+    )?;
 
     // 3) kernels
     let kernels = build_kernels(book, &grids, &y, &cfg.fit.kernel)?;

@@ -4,6 +4,6 @@ pub use crate::market::{CallQuote, OptionChain, OptionBook, AtmMidPolicy, Neares
 pub use crate::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
 pub use crate::interp::{LinearTime, TimeInterpolator};
 pub use crate::surface::SanosSurface;
-pub use crate::grid::{MarketAnchored, StrikeGrid, StrikeGridPolicy};
+pub use crate::grid::{LogMoneynessQuantiles, MarketAnchored, StrikeGrid, StrikeGridPolicy};
 pub use crate::fit::config::{FitConfig, KernelConfig, LpConfig};
 pub use crate::fit::kernels::{KernelSet, KernelC, KernelTransition, DenseMat};
