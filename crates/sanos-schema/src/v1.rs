@@ -94,3 +94,50 @@ impl Default for IvSurfaceSnapshotV1 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_default_sets_expected_schema_and_conventions() {
+        let snap = IvSurfaceSnapshotV1::default();
+        assert_eq!(snap.schema.as_deref(), Some(IV_SNAPSHOT_SCHEMA));
+        let conv = snap.conventions.unwrap();
+        assert_eq!(conv.forward, 1.0);
+        assert_eq!(conv.r, 0.0);
+        assert_eq!(conv.q, 0.0);
+        assert_eq!(conv.strike_convention, "forward_moneyness");
+    }
+
+    #[test]
+    fn snapshot_roundtrip_json_preserves_payload() {
+        let snap = IvSurfaceSnapshotV1 {
+            schema: Some(IV_SNAPSHOT_SCHEMA.to_string()),
+            as_of: Some("2026-01-01".to_string()),
+            conventions: Some(SnapshotConventionsV1::default()),
+            maturities: vec![MaturityNodeV1 {
+                t: 0.5,
+                quotes: vec![IvQuoteV1 {
+                    k: 1.0,
+                    bid_iv: 0.2,
+                    ask_iv: 0.21,
+                }],
+            }],
+        };
+        let raw = serde_json::to_string(&snap).unwrap();
+        let parsed: IvSurfaceSnapshotV1 = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed, snap);
+    }
+
+    #[test]
+    fn serde_rejects_unknown_fields() {
+        let raw = r#"{
+            "schema": "sanos.iv_surface.v1",
+            "maturities": [],
+            "unexpected": 123
+        }"#;
+        let err = serde_json::from_str::<IvSurfaceSnapshotV1>(raw).unwrap_err();
+        assert!(err.to_string().contains("unknown field"));
+    }
+}

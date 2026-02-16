@@ -351,6 +351,29 @@ pub fn surface_snapshot_v1_to_sanos_surface(snap: &SurfaceSnapshotV1) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sanos::backbone::bs::bs_call_forward_norm;
+    use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
+    use sanos::calibration::CalibrationConfig;
+    use sanos::fit::FitConfig;
+    use sanos::grid::StrikeGridPolicyConfig;
+    use sanos::interp::TimeInterpConfig;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file_path(stem: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("sanos_io_{stem}_{}_{}.json", std::process::id(), nanos))
+    }
+
+    fn write_temp_file(stem: &str, raw: &str) -> PathBuf {
+        let path = temp_file_path(stem);
+        fs::write(&path, raw).expect("write temp file");
+        path
+    }
 
     #[test]
     fn compat_loader_accepts_legacy_schema_name_and_strike_unit() {
@@ -418,5 +441,215 @@ mod tests {
         let c = surface.call(0.75, 1.0).expect("surface call");
         assert!(c.is_finite());
         assert!(c >= 0.0);
+    }
+
+    #[test]
+    fn load_iv_snapshot_v1_rejects_unexpected_schema() {
+        let raw = r#"{
+            "schema": "wrong.schema",
+            "maturities": []
+        }"#;
+        let path = write_temp_file("bad_schema", raw);
+        let err = load_iv_snapshot_v1(&path).unwrap_err();
+        let _ = fs::remove_file(&path);
+        assert!(format!("{err}").contains("unexpected snapshot schema"));
+    }
+
+    #[test]
+    fn load_iv_snapshot_v1_reads_valid_file() {
+        let raw = r#"{
+            "schema": "sanos.iv_surface.v1",
+            "conventions": {
+                "forward": 1.0,
+                "r": 0.0,
+                "q": 0.0,
+                "strike_convention": "forward_moneyness"
+            },
+            "maturities": [
+                {
+                    "t": 0.5,
+                    "quotes": [
+                        {"k": 1.0, "bid_iv": 0.2, "ask_iv": 0.21}
+                    ]
+                }
+            ]
+        }"#;
+        let path = write_temp_file("good_snapshot", raw);
+        let snap = load_iv_snapshot_v1(&path).unwrap();
+        let _ = fs::remove_file(&path);
+        assert_eq!(snap.schema.as_deref(), Some(IV_SNAPSHOT_SCHEMA));
+        assert_eq!(snap.maturities.len(), 1);
+    }
+
+    #[test]
+    fn snapshot_to_option_book_scales_strike_and_prices_by_forward() {
+        let snap = IvSurfaceSnapshotV1 {
+            schema: Some(IV_SNAPSHOT_SCHEMA.to_string()),
+            as_of: None,
+            conventions: Some(SnapshotConventionsV1 {
+                forward: 2.0,
+                r: 0.0,
+                q: 0.0,
+                strike_convention: "forward_moneyness".to_string(),
+            }),
+            maturities: vec![MaturityNodeV1 {
+                t: 1.0,
+                quotes: vec![IvQuoteV1 {
+                    k: 1.0,
+                    bid_iv: 0.2,
+                    ask_iv: 0.2,
+                }],
+            }],
+        };
+
+        let book = snapshot_v1_to_option_book(&snap).unwrap();
+        let q = book.chains()[0].quotes()[0];
+        let expected = bs_call_forward_norm(1.0, 0.04).unwrap() * 2.0;
+        assert!((q.k - 2.0).abs() < 1e-12);
+        assert!((q.bid - expected).abs() < 1e-12);
+        assert!((q.ask - expected).abs() < 1e-12);
+        assert!((q.weight - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn snapshot_to_option_book_rejects_invalid_conventions() {
+        let bad_strike = IvSurfaceSnapshotV1 {
+            schema: Some(IV_SNAPSHOT_SCHEMA.to_string()),
+            as_of: None,
+            conventions: Some(SnapshotConventionsV1 {
+                forward: 1.0,
+                r: 0.0,
+                q: 0.0,
+                strike_convention: "spot".to_string(),
+            }),
+            maturities: vec![],
+        };
+        let err = snapshot_v1_to_option_book(&bad_strike).unwrap_err();
+        assert!(format!("{err}").contains("unsupported strike_convention"));
+
+        let bad_rates = IvSurfaceSnapshotV1 {
+            schema: Some(IV_SNAPSHOT_SCHEMA.to_string()),
+            as_of: None,
+            conventions: Some(SnapshotConventionsV1 {
+                forward: 1.0,
+                r: 0.01,
+                q: 0.0,
+                strike_convention: "forward_moneyness".to_string(),
+            }),
+            maturities: vec![],
+        };
+        let err = snapshot_v1_to_option_book(&bad_rates).unwrap_err();
+        assert!(format!("{err}").contains("only r=0.0 and q=0.0 are supported"));
+    }
+
+    #[test]
+    fn snapshot_to_option_book_rejects_bid_iv_above_ask_iv() {
+        let snap = IvSurfaceSnapshotV1 {
+            schema: Some(IV_SNAPSHOT_SCHEMA.to_string()),
+            as_of: None,
+            conventions: Some(SnapshotConventionsV1::default()),
+            maturities: vec![MaturityNodeV1 {
+                t: 0.5,
+                quotes: vec![IvQuoteV1 {
+                    k: 1.0,
+                    bid_iv: 0.3,
+                    ask_iv: 0.2,
+                }],
+            }],
+        };
+        let err = snapshot_v1_to_option_book(&snap).unwrap_err();
+        assert!(format!("{err}").contains("bid_iv > ask_iv"));
+    }
+
+    #[test]
+    fn load_calibration_config_roundtrip() {
+        let cfg = CalibrationConfig {
+            backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
+            grid: StrikeGridPolicyConfig::default(),
+            fit: FitConfig::default(),
+            time_interp: TimeInterpConfig::default(),
+        };
+        let raw = serde_json::to_string_pretty(&cfg).unwrap();
+        let path = write_temp_file("cfg", &raw);
+        let loaded = load_calibration_config(&path).unwrap();
+        let _ = fs::remove_file(&path);
+        assert_eq!(loaded, cfg);
+    }
+
+    #[test]
+    fn load_sanos_surface_v1_reads_file_and_validates_schema() {
+        let raw = r#"{
+          "schema": "sanos.surface.v1",
+          "reconstruction": {
+            "backbone": {
+              "model": "bs_time_changed_lognormal",
+              "eta": 0.25,
+              "var_curve_knots": [
+                {"maturity": 0.5, "total_variance": 0.04},
+                {"maturity": 1.0, "total_variance": 0.09}
+              ]
+            },
+            "time_interp": "LinearTime",
+            "marginals": [
+              {"maturity": 0.5, "atoms": [{"strike": 1.0, "weight": 1.0}]},
+              {"maturity": 1.0, "atoms": [{"strike": 1.0, "weight": 1.0}]}
+            ]
+          }
+        }"#;
+        let path = write_temp_file("surface_ok", raw);
+        let surface = load_sanos_surface_v1(&path).unwrap();
+        let _ = fs::remove_file(&path);
+        assert!(surface.call(0.75, 1.0).unwrap().is_finite());
+    }
+
+    #[test]
+    fn surface_snapshot_rejects_wrong_schema_and_model() {
+        let bad_schema: SurfaceSnapshotV1 = serde_json::from_str(
+            r#"{
+              "schema": "other.schema",
+              "reconstruction": {
+                "backbone": {
+                  "model": "bs_time_changed_lognormal",
+                  "eta": 0.25,
+                  "var_curve_knots": [
+                    {"maturity": 0.5, "total_variance": 0.04},
+                    {"maturity": 1.0, "total_variance": 0.09}
+                  ]
+                },
+                "time_interp": "LinearTime",
+                "marginals": [
+                  {"maturity": 0.5, "atoms": [{"strike": 1.0, "weight": 1.0}]},
+                  {"maturity": 1.0, "atoms": [{"strike": 1.0, "weight": 1.0}]}
+                ]
+              }
+            }"#,
+        )
+        .unwrap();
+        let err = surface_snapshot_v1_to_sanos_surface(&bad_schema).unwrap_err();
+        assert!(format!("{err}").contains("unexpected surface schema"));
+
+        let bad_model: SurfaceSnapshotV1 = serde_json::from_str(
+            r#"{
+              "schema": "sanos.surface.v1",
+              "reconstruction": {
+                "backbone": {
+                  "model": "unsupported_model",
+                  "eta": 0.25,
+                  "var_curve_knots": [
+                    {"maturity": 0.5, "total_variance": 0.04},
+                    {"maturity": 1.0, "total_variance": 0.09}
+                  ]
+                },
+                "time_interp": "LinearTime",
+                "marginals": [
+                  {"maturity": 0.5, "atoms": [{"strike": 1.0, "weight": 1.0}]},
+                  {"maturity": 1.0, "atoms": [{"strike": 1.0, "weight": 1.0}]}
+                ]
+              }
+            }"#,
+        )
+        .unwrap();
+        let err = surface_snapshot_v1_to_sanos_surface(&bad_model).unwrap_err();
+        assert!(format!("{err}").contains("unsupported reconstruction backbone model"));
     }
 }

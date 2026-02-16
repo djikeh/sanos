@@ -1140,3 +1140,221 @@ fn logspace(start: f64, end: f64, n: usize) -> Vec<f64> {
     let l1 = end.ln();
     linspace(l0, l1, n).into_iter().map(f64::exp).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sanos::backbone::bs::bs_call_forward_norm;
+    use sanos::backbone::TimeChangedLognormal;
+    use sanos::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
+    use sanos::interp::LinearTime;
+    use sanos::market::{CallQuote, OptionChain};
+    use sanos::term::PiecewiseLinearCurve;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+
+    fn sample_book() -> OptionBook {
+        let make_chain = |t: f64, w: f64| {
+            let quotes = [0.9, 1.0, 1.1]
+                .iter()
+                .map(|&k| {
+                    let c = bs_call_forward_norm(k, w).unwrap();
+                    CallQuote::new(k, c, c, 1.0).unwrap()
+                })
+                .collect::<Vec<_>>();
+            OptionChain::new(t, quotes).unwrap()
+        };
+        OptionBook::new(vec![make_chain(1.0, 0.09), make_chain(0.5, 0.04)]).unwrap()
+    }
+
+    fn sample_surface() -> SanosSurface {
+        let tol = DensityTolerances::from_tol(1e-12).unwrap();
+        let m1 = MarginalDensity::new(0.5, vec![(0.9, 0.5), (1.1, 0.5)], tol).unwrap();
+        let m2 = MarginalDensity::new(1.0, vec![(0.9, 0.5), (1.1, 0.5)], tol).unwrap();
+        let q = MartingaleDensity::new(vec![m2, m1]).unwrap();
+
+        let var_curve = PiecewiseLinearCurve::new(vec![(0.5, 0.04), (1.0, 0.09)]).unwrap();
+        let y = Arc::new(TimeChangedLognormal::new(var_curve, 1.0));
+        let interp = Arc::new(LinearTime) as Arc<dyn sanos::interp::TimeInterpolator>;
+        SanosSurface::new(y, q, interp)
+    }
+
+    #[test]
+    fn cli_parse_calibrate_applies_default_grid_sizes() {
+        let cli = Cli::try_parse_from([
+            "sanos",
+            "calibrate",
+            "--snapshot",
+            "snap.json",
+            "--config",
+            "cfg.json",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Commands::Calibrate {
+                snapshot,
+                config,
+                out,
+                n_maturities,
+                n_strikes,
+            } => {
+                assert_eq!(snapshot, PathBuf::from("snap.json"));
+                assert_eq!(config, PathBuf::from("cfg.json"));
+                assert!(out.is_none());
+                assert_eq!(n_maturities, 41);
+                assert_eq!(n_strikes, 81);
+            }
+            _ => panic!("expected calibrate command"),
+        }
+    }
+
+    #[test]
+    fn default_calibration_config_uses_hard_bid_ask_microlp() {
+        let cfg = default_calibration_config();
+        assert_eq!(cfg.fit.objective, ObjectiveConfig::HardBidAsk);
+        assert_eq!(cfg.fit.solver, LpSolverConfig::Microlp);
+    }
+
+    #[test]
+    fn report_and_q_export_include_marginals() {
+        let surface = sample_surface();
+        let report = build_report(
+            &PathBuf::from("snapshot.json"),
+            &PathBuf::from("config.json"),
+            &surface,
+        )
+        .unwrap();
+
+        assert_eq!(report.n_maturities, 2);
+        assert_eq!(report.marginals.len(), 2);
+        assert!(report
+            .marginals
+            .iter()
+            .all(|m| (m.mass - 1.0).abs() <= 1e-12 && (m.mean - 1.0).abs() <= 1e-12));
+
+        let q_json = export_q_json(surface.martingale_density());
+        assert_eq!(q_json.marginals.len(), 2);
+        assert!(q_json.marginals.iter().all(|m| !m.atoms.is_empty()));
+    }
+
+    #[test]
+    fn build_surface_json_enforces_minimum_grid_sizes() {
+        let book = sample_book();
+        let surface = sample_surface();
+        let cfg = default_calibration_config();
+
+        let out = build_surface_json(
+            Path::new("snapshot.json"),
+            Path::new("config.json"),
+            &book,
+            &cfg,
+            &surface,
+            1,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(out.maturities.len(), 2);
+        assert_eq!(out.strikes.len(), 3);
+        assert_eq!(out.calls.len(), 2);
+        assert_eq!(out.calls[0].len(), 3);
+        assert_eq!(out.schema, "sanos.surface.v1");
+    }
+
+    #[test]
+    fn build_surface_json_rejects_degenerate_strike_range() {
+        let q = CallQuote::new(1.0, 0.2, 0.2, 1.0).unwrap();
+        let book = OptionBook::new(vec![OptionChain::new(0.5, vec![q]).unwrap()]).unwrap();
+        let surface = sample_surface();
+        let cfg = default_calibration_config();
+
+        let err = build_surface_json(
+            Path::new("snapshot.json"),
+            Path::new("config.json"),
+            &book,
+            &cfg,
+            &surface,
+            5,
+            5,
+        )
+        .unwrap_err();
+        assert!(format!("{err}").contains("invalid strike range"));
+    }
+
+    #[test]
+    fn diagnostics_and_smoothness_are_computed() {
+        let book = sample_book();
+        let surface = sample_surface();
+        let run_stats = CalibrationRunStats {
+            objective_value: 1.23,
+            initialization: None,
+        };
+
+        let d = build_diagnostics_json(&book, &surface, &run_stats, Some(&surface));
+        let n_quotes: usize = book.chains().iter().map(|c| c.quotes().len()).sum();
+
+        assert_eq!(d.summary.n_quotes, n_quotes);
+        assert_eq!(d.quotes.len(), n_quotes);
+        assert_eq!(d.per_maturity.len(), book.len());
+        assert!(d.smoothness_comparison.is_some());
+
+        let cmp_none = build_smoothness_comparison(&book, &d.per_maturity, None);
+        assert!(cmp_none.is_none());
+    }
+
+    #[test]
+    fn no_arbitrage_diagnostics_and_reconstruction_work() {
+        let book = sample_book();
+        let surface = sample_surface();
+
+        let no_arb = compute_no_arbitrage_diagnostics(&book, &surface);
+        assert!(no_arb.monotonicity_max_violation >= 0.0);
+        assert!(no_arb.convexity_max_violation >= 0.0);
+        assert!(no_arb.calendar_max_violation >= 0.0);
+
+        let cfg = default_calibration_config();
+        let q_json = export_q_json(surface.martingale_density());
+        let recon = build_reconstruction_json(&book, &cfg, &q_json).unwrap();
+        assert_eq!(recon.backbone.model, "bs_time_changed_lognormal");
+        assert_eq!(recon.marginals.len(), q_json.marginals.len());
+    }
+
+    #[test]
+    fn smoothness_and_no_arb_helpers_cover_edge_cases() {
+        let empty = iv_smoothness(&[0.9], &[Some(0.2), Some(0.21)]);
+        assert!(empty.total_variation.is_none());
+
+        let simple = iv_smoothness(&[0.9, 1.0], &[Some(0.2), Some(0.22)]);
+        assert!(simple.total_variation.unwrap() > 0.0);
+        assert!(simple.max_second_diff.is_none());
+
+        let rich = iv_smoothness(&[0.9, 1.0, 1.1], &[Some(0.2), Some(0.21), Some(0.25)]);
+        assert!(rich.max_second_diff.unwrap() >= 0.0);
+
+        let (mono, conv) = chain_strike_no_arb(&[0.9, 1.0, 1.1], &[0.2, 0.3, 0.1]);
+        assert!(mono > 0.0);
+        assert!(conv >= 0.0);
+    }
+
+    #[test]
+    fn scalar_helpers_and_grids_behave_as_expected() {
+        assert_eq!(ratio(0, 0), 0.0);
+        assert_eq!(ratio(1, 4), 0.25);
+        assert_eq!(safe_div(1.0, 0.0), 0.0);
+        assert_eq!(safe_div(3.0, 2.0), 1.5);
+        assert_eq!(safe_metric(1.0, 0), None);
+        assert_eq!(safe_metric(3.0, 2), Some(1.5));
+        assert!(implied_iv_or_none(-1.0, 1.0, 1.0).is_none());
+
+        let l = linspace(1.0, 3.0, 3);
+        assert_eq!(l, vec![1.0, 2.0, 3.0]);
+        let ln = linspace(2.0, 2.0, 1);
+        assert_eq!(ln, vec![2.0]);
+
+        let ls = logspace(1.0, std::f64::consts::E, 3);
+        assert_eq!(ls.len(), 3);
+        assert!((ls[0] - 1.0).abs() < 1e-12);
+        assert!((ls[2] - std::f64::consts::E).abs() < 1e-12);
+    }
+}

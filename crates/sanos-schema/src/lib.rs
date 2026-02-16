@@ -11,3 +11,25 @@ pub mod v1;
 // Re-export the runtime calibration config types from the core crate.
 // This ensures the JSON config stays in sync with the actual calibrator.
 pub use sanos::calibration::CalibrationConfig;
+
+#[cfg(test)]
+mod tests {
+    use super::CalibrationConfig;
+    use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
+    use sanos::fit::FitConfig;
+    use sanos::grid::StrikeGridPolicyConfig;
+    use sanos::interp::TimeInterpConfig;
+
+    #[test]
+    fn calibration_config_reexport_matches_runtime_type() {
+        let cfg = CalibrationConfig {
+            backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
+            grid: StrikeGridPolicyConfig::default(),
+            fit: FitConfig::default(),
+            time_interp: TimeInterpConfig::default(),
+        };
+        match cfg.backbone {
+            BackboneConfig::BsTimeChanged(_) => {}
+        }
+    }
+}
