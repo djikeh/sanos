@@ -1,0 +1,13 @@
+[package]
+name = "sanos-io"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "I/O helpers for SANOS JSON snapshots and configs"
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"
+
+sanos = { path = "../sanos", features = ["serde"] }
+sanos-schema = { path = "../sanos-schema" }

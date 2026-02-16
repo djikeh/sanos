@@ -1,0 +1,13 @@
+[package]
+name = "sanos-schema"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "JSON schemas for SANOS examples and calibration configs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+# Re-export the core config types directly (single source of truth).
+# This keeps schema + runtime aligned.
+sanos = { path = "../sanos", features = ["serde"] }
