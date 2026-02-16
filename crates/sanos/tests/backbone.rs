@@ -1,6 +1,6 @@
 use sanos::backbone::{
-    build_backbone, bs_call_forward_norm, AtmMidPolicyConfig, BackboneConfig, BsTimeChangedConfig,
-    TimeChangedLognormal, YModel,
+    build_backbone, bs_call_forward_norm, bs_implied_vol_from_call, AtmMidPolicyConfig,
+    BackboneConfig, BsTimeChangedConfig, TimeChangedLognormal, YModel,
 };
 use sanos::error::SanosError;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
@@ -13,6 +13,17 @@ fn bs_call_var_zero_limit() {
 
     let c = bs_call_forward_norm(0.8, 0.0).unwrap();
     assert!((c - 0.2).abs() < 1e-15);
+}
+
+#[test]
+fn bs_implied_vol_roundtrip() {
+    let k = 1.15;
+    let t = 0.7;
+    let sigma = 0.32;
+    let var = sigma * sigma * t;
+    let price = bs_call_forward_norm(k, var).unwrap();
+    let implied = bs_implied_vol_from_call(price, 1.0, k, t).unwrap();
+    assert!((implied - sigma).abs() < 1e-10);
 }
 
 #[test]

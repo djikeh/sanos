@@ -4,7 +4,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::info;
 
-use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
+use sanos::backbone::{
+    bs_implied_vol_from_call, build_time_changed_lognormal_from_book, BackboneConfig,
+    BsTimeChangedConfig,
+};
 use sanos::calibration::{calibrate, CalibrationConfig};
 use sanos::density::DensityTolerances;
 use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig};
@@ -58,6 +61,12 @@ enum Commands {
         snapshot: PathBuf,
     },
 
+    /// Validate and reconstruct a SANOS surface from surface.json.
+    ValidateSurface {
+        #[arg(long)]
+        surface: PathBuf,
+    },
+
     /// Write a default calibration config JSON template.
     InitConfig {
         /// Output path for the generated JSON template.
@@ -91,6 +100,27 @@ struct SurfaceJson {
     strikes: Vec<f64>,
     calls: Vec<Vec<f64>>,
     marginals: Vec<QJsonMarginal>,
+    reconstruction: SurfaceReconstructionJson,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SurfaceReconstructionJson {
+    backbone: ReconstructionBackboneJson,
+    time_interp: TimeInterpConfig,
+    marginals: Vec<QJsonMarginal>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ReconstructionBackboneJson {
+    model: String,
+    eta: f64,
+    var_curve_knots: Vec<VarianceKnotJson>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct VarianceKnotJson {
+    maturity: f64,
+    total_variance: f64,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -108,6 +138,8 @@ struct DiagnosticsSummary {
     mae_mid: f64,
     rmse_mid: f64,
     mae_spread_norm: f64,
+    mae_iv: Option<f64>,
+    rmse_iv: Option<f64>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -118,6 +150,8 @@ struct DiagnosticsPerMaturity {
     mae_mid: f64,
     rmse_mid: f64,
     mae_spread_norm: f64,
+    mae_iv: Option<f64>,
+    rmse_iv: Option<f64>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -132,6 +166,11 @@ struct QuoteDiagnostics {
     residual_mid: f64,
     residual_spread_norm: f64,
     inside_bid_ask: bool,
+    bid_iv: Option<f64>,
+    ask_iv: Option<f64>,
+    mid_iv: Option<f64>,
+    model_iv: Option<f64>,
+    residual_iv: Option<f64>,
 }
 
 fn main() -> Result<()> {
@@ -154,6 +193,15 @@ fn main() -> Result<()> {
             // Conversion also performs numeric checks.
             let _book = sanos_io::snapshot_v1_to_option_book(&snap)?;
             info!("snapshot OK: {} maturities", snap.maturities.len());
+            Ok(())
+        }
+
+        Commands::ValidateSurface { surface } => {
+            let reconstructed = sanos_io::load_sanos_surface_v1(&surface)?;
+            info!(
+                "surface OK: {} marginals",
+                reconstructed.martingale_density().marginals().len()
+            );
             Ok(())
         }
 
@@ -219,6 +267,7 @@ fn main() -> Result<()> {
                     &snapshot,
                     &config,
                     &book,
+                    &cfg,
                     &surface,
                     n_maturities,
                     n_strikes,
@@ -284,18 +333,18 @@ fn build_report(
     })
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 struct QJson {
     marginals: Vec<QJsonMarginal>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 struct QJsonMarginal {
     maturity: f64,
     atoms: Vec<QJsonAtom>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 struct QJsonAtom {
     strike: f64,
     weight: f64,
@@ -325,6 +374,7 @@ fn build_surface_json(
     snapshot: &Path,
     config: &Path,
     book: &OptionBook,
+    cfg: &CalibrationConfig,
     surface: &SanosSurface,
     n_maturities: usize,
     n_strikes: usize,
@@ -357,6 +407,7 @@ fn build_surface_json(
 
     let strikes = logspace(k_min * 0.95, k_max * 1.05, n_strikes);
     let maturities = linspace(t_min, t_max, n_maturities);
+    let q_json = export_q_json(surface.martingale_density());
 
     let mut calls = Vec::with_capacity(maturities.len());
     for &t in &maturities {
@@ -370,6 +421,8 @@ fn build_surface_json(
         calls.push(row);
     }
 
+    let reconstruction = build_reconstruction_json(book, cfg, &q_json)?;
+
     Ok(SurfaceJson {
         schema: "sanos.surface.v1".to_string(),
         snapshot: snapshot.display().to_string(),
@@ -377,7 +430,8 @@ fn build_surface_json(
         maturities,
         strikes,
         calls,
-        marginals: export_q_json(surface.martingale_density()).marginals,
+        marginals: q_json.marginals.clone(),
+        reconstruction,
     })
 }
 
@@ -389,6 +443,9 @@ fn build_diagnostics_json(book: &OptionBook, surface: &SanosSurface) -> Diagnost
         sum_abs_mid: f64,
         sum_sq_mid: f64,
         sum_abs_spread_norm: f64,
+        n_iv: usize,
+        sum_abs_iv: f64,
+        sum_sq_iv: f64,
     }
 
     let mut quotes = Vec::new();
@@ -406,6 +463,14 @@ fn build_diagnostics_json(book: &OptionBook, surface: &SanosSurface) -> Diagnost
             let residual_mid = model - mid;
             let residual_spread_norm = residual_mid / (0.5 * spread);
             let inside_bid_ask = model >= q.bid - 1e-12 && model <= q.ask + 1e-12;
+            let bid_iv = implied_iv_or_none(q.bid, q.k, t);
+            let ask_iv = implied_iv_or_none(q.ask, q.k, t);
+            let mid_iv = implied_iv_or_none(mid, q.k, t);
+            let model_iv = implied_iv_or_none(model, q.k, t);
+            let residual_iv = match (model_iv, mid_iv) {
+                (Some(m), Some(v)) => Some(m - v),
+                _ => None,
+            };
 
             quotes.push(QuoteDiagnostics {
                 maturity: t,
@@ -418,6 +483,11 @@ fn build_diagnostics_json(book: &OptionBook, surface: &SanosSurface) -> Diagnost
                 residual_mid,
                 residual_spread_norm,
                 inside_bid_ask,
+                bid_iv,
+                ask_iv,
+                mid_iv,
+                model_iv,
+                residual_iv,
             });
 
             agg.n += 1;
@@ -434,6 +504,14 @@ fn build_diagnostics_json(book: &OptionBook, surface: &SanosSurface) -> Diagnost
             let abs_spread = residual_spread_norm.abs();
             agg.sum_abs_spread_norm += abs_spread;
             global.sum_abs_spread_norm += abs_spread;
+            if let Some(riv) = residual_iv {
+                agg.n_iv += 1;
+                global.n_iv += 1;
+                agg.sum_abs_iv += riv.abs();
+                global.sum_abs_iv += riv.abs();
+                agg.sum_sq_iv += riv * riv;
+                global.sum_sq_iv += riv * riv;
+            }
         }
 
         per_maturity.push(DiagnosticsPerMaturity {
@@ -443,6 +521,8 @@ fn build_diagnostics_json(book: &OptionBook, surface: &SanosSurface) -> Diagnost
             mae_mid: safe_div(agg.sum_abs_mid, agg.n as f64),
             rmse_mid: safe_div(agg.sum_sq_mid, agg.n as f64).sqrt(),
             mae_spread_norm: safe_div(agg.sum_abs_spread_norm, agg.n as f64),
+            mae_iv: safe_metric(agg.sum_abs_iv, agg.n_iv),
+            rmse_iv: safe_metric(agg.sum_sq_iv, agg.n_iv).map(f64::sqrt),
         });
     }
 
@@ -470,10 +550,50 @@ fn build_diagnostics_json(book: &OptionBook, surface: &SanosSurface) -> Diagnost
             mae_mid: safe_div(global.sum_abs_mid, global.n as f64),
             rmse_mid: safe_div(global.sum_sq_mid, global.n as f64).sqrt(),
             mae_spread_norm: safe_div(global.sum_abs_spread_norm, global.n as f64),
+            mae_iv: safe_metric(global.sum_abs_iv, global.n_iv),
+            rmse_iv: safe_metric(global.sum_sq_iv, global.n_iv).map(f64::sqrt),
         },
         per_maturity,
         quotes,
     }
+}
+
+fn build_reconstruction_json(
+    book: &OptionBook,
+    cfg: &CalibrationConfig,
+    q_json: &QJson,
+) -> Result<SurfaceReconstructionJson> {
+    let backbone = match &cfg.backbone {
+        BackboneConfig::BsTimeChanged(bs_cfg) => {
+            let model = build_time_changed_lognormal_from_book(book, bs_cfg)
+                .map_err(|e| anyhow::anyhow!("failed to reconstruct backbone knots: {e:?}"))?;
+            let var_curve_knots = model
+                .var_curve_knots()
+                .iter()
+                .map(|(t, w)| VarianceKnotJson {
+                    maturity: *t,
+                    total_variance: *w,
+                })
+                .collect();
+            ReconstructionBackboneJson {
+                model: "bs_time_changed_lognormal".to_string(),
+                eta: model.var_scale(),
+                var_curve_knots,
+            }
+        }
+    };
+
+    Ok(SurfaceReconstructionJson {
+        backbone,
+        time_interp: cfg.time_interp,
+        marginals: q_json.marginals.clone(),
+    })
+}
+
+fn implied_iv_or_none(call: f64, strike: f64, maturity: f64) -> Option<f64> {
+    bs_implied_vol_from_call(call, 1.0, strike, maturity)
+        .ok()
+        .filter(|v| v.is_finite())
 }
 
 #[inline]
@@ -491,6 +611,15 @@ fn safe_div(num: f64, den: f64) -> f64 {
         0.0
     } else {
         num / den
+    }
+}
+
+#[inline]
+fn safe_metric(num: f64, den: usize) -> Option<f64> {
+    if den == 0 {
+        None
+    } else {
+        Some(num / den as f64)
     }
 }
 

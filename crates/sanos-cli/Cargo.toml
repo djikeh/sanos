@@ -19,4 +19,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 sanos = { path = "../sanos", features = ["serde"] }
 sanos-io = { path = "../sanos-io" }
-sanos-schema = { path = "../sanos-schema" }

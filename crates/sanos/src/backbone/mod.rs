@@ -6,7 +6,7 @@ mod config;
 mod builder;
 mod factory;
 
-pub use bs::{bs_call_forward_norm, bs_implied_atm_var_from_call, norm_cdf};
+pub use bs::{bs_call_forward_norm, bs_implied_atm_var_from_call, bs_implied_vol_from_call, norm_cdf};
 pub use builder::build_time_changed_lognormal_from_book;
 pub use config::{AtmMidPolicyConfig, BsTimeChangedConfig};
 pub use lognormal_tc::TimeChangedLognormal;

@@ -32,8 +32,13 @@ cargo run -p sanos-cli -- calibrate \
 This writes:
 - `report.json`
 - `q.json`
-- `surface.json` (dense and pretty-printed)
+- `surface.json` (dense and pretty-printed, includes `reconstruction` to rebuild `SanosSurface`)
 - `diagnostics.json`
+
+4. Validate and reconstruct a previously exported surface:
+```bash
+cargo run -p sanos-cli -- validate-surface --surface data/surfaces/my_run/surface.json
+```
 
 ## Python orchestrator (`sanos run`)
 
@@ -56,6 +61,7 @@ Then it:
 2. Runs calibration via Rust CLI.
 3. Writes JSON outputs in `data/surfaces/<snapshot>__<config>/`.
 4. Generates calibration quality plots in `data/images/<snapshot>__<config>/`.
+5. Generates a Markdown report in `data/reports/<snapshot>__<config>.md`.
 
 Optional flags:
 - `--no-validate`

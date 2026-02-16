@@ -10,10 +10,16 @@ use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use sanos::backbone::bs::bs_call_forward_norm;
+use sanos::backbone::TimeChangedLognormal;
 use sanos::calibration::CalibrationConfig;
+use sanos::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
+use sanos::interp::TimeInterpConfig;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
+use sanos::surface::SanosSurface;
+use sanos::term::PiecewiseLinearCurve;
 use sanos_schema::v1::{
     IvQuoteV1, IvSurfaceSnapshotV1, MaturityNodeV1, SnapshotConventionsV1, IV_SNAPSHOT_SCHEMA,
 };
@@ -242,6 +248,106 @@ pub fn snapshot_v1_to_option_book(snapshot: &IvSurfaceSnapshotV1) -> Result<Opti
     OptionBook::new(chains).context("failed to build OptionBook")
 }
 
+/// Re-hydratable SANOS surface snapshot (v1).
+///
+/// This format is designed so the `reconstruction` block is sufficient to rebuild
+/// a `SanosSurface` without requiring the original calibration config or market snapshot.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SurfaceSnapshotV1 {
+    pub schema: String,
+    pub reconstruction: SurfaceReconstructionV1,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SurfaceReconstructionV1 {
+    pub backbone: ReconstructBackboneV1,
+    pub time_interp: TimeInterpConfig,
+    pub marginals: Vec<SurfaceMarginalV1>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReconstructBackboneV1 {
+    pub model: String,
+    pub eta: f64,
+    pub var_curve_knots: Vec<VarKnotV1>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VarKnotV1 {
+    pub maturity: f64,
+    pub total_variance: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SurfaceMarginalV1 {
+    pub maturity: f64,
+    pub atoms: Vec<SurfaceAtomV1>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SurfaceAtomV1 {
+    pub strike: f64,
+    pub weight: f64,
+}
+
+/// Load and reconstruct a `SanosSurface` from a `surface.json` document.
+pub fn load_sanos_surface_v1<P: AsRef<Path>>(path: P) -> Result<SanosSurface> {
+    let path_ref = path.as_ref();
+    let raw = fs::read_to_string(path_ref)
+        .with_context(|| format!("failed to read surface file: {}", path_ref.display()))?;
+    let snap: SurfaceSnapshotV1 = serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse surface JSON: {}", path_ref.display()))?;
+    surface_snapshot_v1_to_sanos_surface(&snap)
+}
+
+/// Reconstruct a `SanosSurface` from a parsed surface snapshot.
+pub fn surface_snapshot_v1_to_sanos_surface(snap: &SurfaceSnapshotV1) -> Result<SanosSurface> {
+    if snap.schema != "sanos.surface.v1" {
+        bail!(
+            "unexpected surface schema: expected sanos.surface.v1, got {}",
+            snap.schema
+        );
+    }
+
+    let backbone = &snap.reconstruction.backbone;
+    if backbone.model != "bs_time_changed_lognormal" {
+        bail!(
+            "unsupported reconstruction backbone model: {}",
+            backbone.model
+        );
+    }
+
+    let knots: Vec<(f64, f64)> = backbone
+        .var_curve_knots
+        .iter()
+        .map(|k| (k.maturity, k.total_variance))
+        .collect();
+    let var_curve = PiecewiseLinearCurve::new(knots)
+        .context("invalid reconstruction.backbone.var_curve_knots")?;
+    let y = Arc::new(TimeChangedLognormal::new(var_curve, backbone.eta));
+
+    let tol = DensityTolerances::from_tol(1e-10)
+        .context("failed to create default density tolerances")?;
+    let marginals: Vec<MarginalDensity> = snap
+        .reconstruction
+        .marginals
+        .iter()
+        .map(|m| {
+            let atoms: Vec<(f64, f64)> = m.atoms.iter().map(|a| (a.strike, a.weight)).collect();
+            MarginalDensity::new(m.maturity, atoms, tol)
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("invalid reconstruction.marginals")?;
+    let q = MartingaleDensity::new(marginals).context("invalid reconstructed martingale density")?;
+    let interp = snap
+        .reconstruction
+        .time_interp
+        .build()
+        .context("invalid reconstruction.time_interp")?;
+
+    Ok(SanosSurface::new(y, q, interp))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,5 +388,35 @@ mod tests {
         );
         assert_eq!(snap.maturities.len(), 1);
         assert_eq!(snap.maturities[0].quotes.len(), 1);
+    }
+
+    #[test]
+    fn surface_snapshot_reconstructs_sanos_surface() {
+        let raw = r#"
+        {
+          "schema": "sanos.surface.v1",
+          "reconstruction": {
+            "backbone": {
+              "model": "bs_time_changed_lognormal",
+              "eta": 0.25,
+              "var_curve_knots": [
+                {"maturity": 0.5, "total_variance": 0.04},
+                {"maturity": 1.0, "total_variance": 0.09}
+              ]
+            },
+            "time_interp": "LinearTime",
+            "marginals": [
+              {"maturity": 0.5, "atoms": [{"strike": 1.0, "weight": 1.0}]},
+              {"maturity": 1.0, "atoms": [{"strike": 1.0, "weight": 1.0}]}
+            ]
+          }
+        }
+        "#;
+
+        let snap: SurfaceSnapshotV1 = serde_json::from_str(raw).expect("surface parse");
+        let surface = surface_snapshot_v1_to_sanos_surface(&snap).expect("surface reconstruction");
+        let c = surface.call(0.75, 1.0).expect("surface call");
+        assert!(c.is_finite());
+        assert!(c >= 0.0);
     }
 }

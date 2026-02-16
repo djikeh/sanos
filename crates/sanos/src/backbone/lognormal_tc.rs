@@ -21,6 +21,16 @@ impl TimeChangedLognormal {
     }
 
     #[inline]
+    pub fn var_scale(&self) -> f64 {
+        self.var_scale
+    }
+
+    #[inline]
+    pub fn var_curve_knots(&self) -> &[(f64, f64)] {
+        self.var_curve.knots()
+    }
+
+    #[inline]
     pub fn var(&self, maturity: f64) -> SanosResult<f64> {
         let v = self.var_curve.value(maturity)?;
         if v < 0.0 {

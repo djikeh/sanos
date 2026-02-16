@@ -639,7 +639,6 @@ dependencies = [
  "clap",
  "sanos",
  "sanos-io",
- "sanos-schema",
  "serde",
  "serde_json",
  "tracing",

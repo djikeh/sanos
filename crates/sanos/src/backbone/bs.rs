@@ -109,3 +109,100 @@ pub fn bs_implied_atm_var_from_call(call_atm: f64) -> SanosResult<f64> {
     let x = n.inverse_cdf(p); // x = 0.5*sqrt(W)
     Ok(4.0 * x * x)
 }
+
+/// Black implied volatility from a call price using Jaeckel's solver.
+///
+/// Inputs follow Black's forward convention:
+/// - `forward` > 0
+/// - `strike` > 0
+/// - `maturity` > 0
+/// - `call` in [intrinsic, forward]
+#[cfg(feature = "iv-jaeckel")]
+pub fn bs_implied_vol_from_call(
+    call: f64,
+    forward: f64,
+    strike: f64,
+    maturity: f64,
+) -> SanosResult<f64> {
+    if !call.is_finite() {
+        return Err(SanosError::NonFinite {
+            field: "call",
+            value: call,
+        });
+    }
+    if !forward.is_finite() {
+        return Err(SanosError::NonFinite {
+            field: "forward",
+            value: forward,
+        });
+    }
+    if !strike.is_finite() {
+        return Err(SanosError::NonFinite {
+            field: "strike",
+            value: strike,
+        });
+    }
+    if !maturity.is_finite() {
+        return Err(SanosError::NonFinite {
+            field: "maturity",
+            value: maturity,
+        });
+    }
+    if forward <= 0.0 {
+        return Err(SanosError::InvalidBound {
+            field: "forward",
+            value: forward,
+            min: f64::MIN_POSITIVE,
+            max: f64::INFINITY,
+        });
+    }
+    if strike <= 0.0 {
+        return Err(SanosError::InvalidBound {
+            field: "strike",
+            value: strike,
+            min: f64::MIN_POSITIVE,
+            max: f64::INFINITY,
+        });
+    }
+    if maturity <= 0.0 {
+        return Err(SanosError::InvalidBound {
+            field: "maturity",
+            value: maturity,
+            min: f64::MIN_POSITIVE,
+            max: f64::INFINITY,
+        });
+    }
+
+    let intrinsic = (forward - strike).max(0.0);
+    if call < intrinsic - 1e-14 || call > forward + 1e-14 {
+        return Err(SanosError::InvalidBound {
+            field: "call",
+            value: call,
+            min: intrinsic,
+            max: forward,
+        });
+    }
+
+    let iv = jaeckel::implied_black_volatility(call, forward, strike, maturity, 1.0);
+    if !iv.is_finite() || iv == f64::MAX || iv == -f64::MAX || iv < 0.0 {
+        return Err(SanosError::External {
+            msg: format!(
+                "implied vol inversion failed (call={call}, forward={forward}, strike={strike}, maturity={maturity}, iv={iv})"
+            ),
+        });
+    }
+
+    Ok(iv)
+}
+
+#[cfg(not(feature = "iv-jaeckel"))]
+pub fn bs_implied_vol_from_call(
+    _call: f64,
+    _forward: f64,
+    _strike: f64,
+    _maturity: f64,
+) -> SanosResult<f64> {
+    Err(SanosError::NotImplemented {
+        what: "Enable feature `iv-jaeckel` to use implied volatility inversion.",
+    })
+}
