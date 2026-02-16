@@ -1,0 +1,729 @@
+{
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "atoms": [
+        {
+          "strike": 0.4861111111111111,
+          "weight": 1.3664024017126976e-6
+        },
+        {
+          "strike": 0.5833333333333334,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.72,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.74,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.76,
+          "weight": 0.0009085611221619911
+        },
+        {
+          "strike": 0.78,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7999999999999999,
+          "weight": 0.0007987420793007873
+        },
+        {
+          "strike": 0.82,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.84,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.86,
+          "weight": 0.041464968286568954
+        },
+        {
+          "strike": 0.88,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.9,
+          "weight": 0.04175270526220399
+        },
+        {
+          "strike": 0.92,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.94,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.96,
+          "weight": 0.4192579910443997
+        },
+        {
+          "strike": 0.98,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.0,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.02,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.04,
+          "weight": 0.4122090056403919
+        },
+        {
+          "strike": 1.06,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.08,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.1,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.12,
+          "weight": 0.0701482911133421
+        },
+        {
+          "strike": 1.14,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.16,
+          "weight": 0.012786797903463912
+        },
+        {
+          "strike": 1.1800000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2000000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2200000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2400000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.26,
+          "weight": 0.0006080793798388786
+        },
+        {
+          "strike": 1.28,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.3,
+          "weight": 0.00006349176592617423
+        },
+        {
+          "strike": 1.56,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.8719999999999999,
+          "weight": 0.0
+        }
+      ]
+    },
+    {
+      "maturity": 0.0821917808219178,
+      "atoms": [
+        {
+          "strike": 0.4861111111111111,
+          "weight": 0.0004678522372276756
+        },
+        {
+          "strike": 0.5833333333333334,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7,
+          "weight": 0.008963572156261044
+        },
+        {
+          "strike": 0.72,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.74,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.76,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.78,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7999999999999999,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.82,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.84,
+          "weight": 0.14276485540019468
+        },
+        {
+          "strike": 0.86,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.88,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.9,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.92,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.94,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.96,
+          "weight": 0.4105000460706517
+        },
+        {
+          "strike": 0.98,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.0,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.02,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.04,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.06,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.08,
+          "weight": 0.39514979082293195
+        },
+        {
+          "strike": 1.1,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.12,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.14,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.16,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.1800000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2000000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2200000000000002,
+          "weight": 0.02582842299457415
+        },
+        {
+          "strike": 1.2400000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.26,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.28,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.3,
+          "weight": 0.016325460318158912
+        },
+        {
+          "strike": 1.56,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.8719999999999999,
+          "weight": 0.0
+        }
+      ]
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "atoms": [
+        {
+          "strike": 0.4861111111111111,
+          "weight": 0.012585087442048486
+        },
+        {
+          "strike": 0.5833333333333334,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.72,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.74,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.76,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.78,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7999999999999999,
+          "weight": 0.17908242070695068
+        },
+        {
+          "strike": 0.82,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.84,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.86,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.88,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.9,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.92,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.94,
+          "weight": 0.32169489900149406
+        },
+        {
+          "strike": 0.96,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.98,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.0,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.02,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.04,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.06,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.08,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.1,
+          "weight": 0.4389111606880241
+        },
+        {
+          "strike": 1.12,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.14,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.16,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.1800000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2000000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2200000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2400000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.26,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.28,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.3,
+          "weight": 0.04182351438806251
+        },
+        {
+          "strike": 1.56,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.8719999999999999,
+          "weight": 0.005902917773420081
+        }
+      ]
+    },
+    {
+      "maturity": 0.4931506849315068,
+      "atoms": [
+        {
+          "strike": 0.4861111111111111,
+          "weight": 0.031382724399945904
+        },
+        {
+          "strike": 0.5833333333333334,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.72,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.74,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.76,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.78,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7999999999999999,
+          "weight": 0.2626349883424001
+        },
+        {
+          "strike": 0.82,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.84,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.86,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.88,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.9,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.92,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.94,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.96,
+          "weight": 0.19624865197752914
+        },
+        {
+          "strike": 0.98,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.0,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.02,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.04,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.06,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.08,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.1,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.12,
+          "weight": 0.4893398309102305
+        },
+        {
+          "strike": 1.14,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.16,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.1800000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2000000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2200000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2400000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.26,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.28,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.3,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.56,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.8719999999999999,
+          "weight": 0.02039380436989443
+        }
+      ]
+    },
+    {
+      "maturity": 1.0,
+      "atoms": [
+        {
+          "strike": 0.4861111111111111,
+          "weight": 0.06918078986029493
+        },
+        {
+          "strike": 0.5833333333333334,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.7,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.72,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.74,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.76,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.78,
+          "weight": 0.26710322559523275
+        },
+        {
+          "strike": 0.7999999999999999,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.82,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.84,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.86,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.88,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.9,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.92,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.94,
+          "weight": 0.062400315305032
+        },
+        {
+          "strike": 0.96,
+          "weight": 0.0
+        },
+        {
+          "strike": 0.98,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.0,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.02,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.04,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.06,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.08,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.1,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.12,
+          "weight": 0.5668740635555534
+        },
+        {
+          "strike": 1.14,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.16,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.1800000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2000000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2200000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.2400000000000002,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.26,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.28,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.3,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.56,
+          "weight": 0.0
+        },
+        {
+          "strike": 1.8719999999999999,
+          "weight": 0.03444160568388685
+        }
+      ]
+    }
+  ]
+}
