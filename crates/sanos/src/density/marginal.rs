@@ -52,6 +52,16 @@ impl MarginalDensity {
         &self.atoms
     }
 
+    #[inline]
+    pub fn strikes(&self) -> Vec<f64> {
+        self.atoms.iter().map(|&(k, _)| k).collect()
+    }
+
+    #[inline]
+    pub fn probabilities(&self) -> Vec<f64> {
+        self.atoms.iter().map(|&(_, q)| q).collect()
+    }
+
     /// Call-transform:
     ///     C(kappa) = E[(K - kappa)^+] = sum_i q_i * (k_i - kappa)^+
     pub fn call(&self, kappa: f64) -> SanosResult<f64> {

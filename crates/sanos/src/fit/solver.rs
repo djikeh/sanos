@@ -1,10 +1,19 @@
 use crate::error::{SanosError, SanosResult};
+use crate::density::MartingaleDensity;
 use crate::fit::config::LpSolverConfig;
+use crate::fit::kernels::KernelSet;
+use crate::fit::lp::builder::LpLayout;
 use crate::fit::lp::model::LpModel;
 
 #[derive(Debug, Clone)]
 pub struct LpSolution {
     pub values: Vec<f64>, // values[var_id]
+}
+
+#[derive(Debug, Clone)]
+pub struct SolveResult {
+    pub density: MartingaleDensity,
+    pub objective_value: f64,
 }
 
 pub fn solve_lp(model: &LpModel, cfg: &LpSolverConfig) -> SanosResult<LpSolution> {
@@ -16,6 +25,57 @@ pub fn solve_lp(model: &LpModel, cfg: &LpSolverConfig) -> SanosResult<LpSolution
             time_limit_sec,
         } => solve_with_cbc(model, *msg, *time_limit_sec),
     }
+}
+
+pub fn add_martingale_density_warm_start(
+    model: &mut LpModel,
+    layout: &LpLayout,
+    warm_start: &MartingaleDensity,
+) -> SanosResult<()> {
+    if layout.q_var_ids.len() != warm_start.marginals().len() {
+        return Err(SanosError::InvalidOrdering {
+            msg: "layout.q_var_ids must align with warm-start marginals",
+        });
+    }
+
+    for (q_ids, marginal) in layout.q_var_ids.iter().zip(warm_start.marginals().iter()) {
+        if q_ids.len() != marginal.atoms().len() {
+            return Err(SanosError::InvalidOrdering {
+                msg: "number of q_var_ids does not match number of atoms in warm-start marginal",
+            });
+        }
+
+        for (&q_id, &weight) in q_ids.iter().zip(marginal.probabilities().iter()) {
+            model.set_var_initial(q_id, weight)?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn solve(
+    model: &LpModel,
+    layout: &LpLayout,
+    kernels: &KernelSet,
+    cfg: &LpSolverConfig,
+) -> SanosResult<SolveResult> {
+    let lp_solution = solve_lp(model, cfg)?;
+    let objective_value = evaluate_objective_value(model, &lp_solution.values);
+    let density = crate::fit::extract::extract_density(layout, &lp_solution, kernels)?;
+
+    Ok(SolveResult {
+        density,
+        objective_value,
+    })
+}
+
+fn evaluate_objective_value(model: &LpModel, values: &[f64]) -> f64 {
+    model
+        .objective
+        .terms
+        .iter()
+        .map(|t| t.coef * values[t.var])
+        .sum()
 }
 
 #[cfg(feature = "lp-cbc")]
@@ -37,6 +97,9 @@ fn solve_with_cbc(model: &LpModel, msg: bool, time_limit_sec: Option<u64>) -> Sa
         }
         if v.ub.is_finite() {
             spec = spec.max(v.ub);
+        }
+        if let Some(initial) = v.initial {
+            spec = spec.initial(initial);
         }
         vhandles.push(vars.add(spec));
     }
@@ -105,6 +168,9 @@ fn solve_with_microlp(model: &LpModel) -> SanosResult<LpSolution> {
         }
         if v.ub.is_finite() {
             spec = spec.max(v.ub);
+        }
+        if let Some(initial) = v.initial {
+            spec = spec.initial(initial);
         }
         vhandles.push(vars.add(spec));
     }

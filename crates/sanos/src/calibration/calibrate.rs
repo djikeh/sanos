@@ -2,10 +2,7 @@ use crate::backbone::{build_backbone_with_total_variances, BackboneConfig};
 use crate::density::DensityTolerances;
 use crate::error::SanosResult;
 use crate::fit::lp::builder::{LpBuilder, SanosLpBuilder};
-use crate::fit::{
-    add_l1_density_anchor, build_kernels, build_linear_density_initialization, extract_density,
-    solve_lp, LinearDensityInitialization,
-};
+use crate::fit::{add_martingale_density_warm_start, build_kernels, build_warm_start, solve};
 use crate::grid::build_strike_grids_with_variances;
 use crate::market::OptionBook;
 use crate::surface::SanosSurface;
@@ -16,7 +13,6 @@ use super::config::{CalibrationConfig, ConvexOrderValidationMode};
 #[derive(Debug, Clone)]
 pub struct CalibrationRunStats {
     pub objective_value: f64,
-    pub initialization: Option<LinearDensityInitialization>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,7 +30,7 @@ pub fn calibrate_with_stats(
     // 1) backbone
     let (y, total_variances) = build_backbone_with_total_variances(book, &cfg.backbone)?;
 
-    // 2) strike grids (reuse existing ATM policy config build)
+    // 2) strike grids
     let atm_policy = match &cfg.backbone {
         BackboneConfig::BsTimeChanged(bs_cfg) => bs_cfg.atm_policy.build()?,
     };
@@ -52,29 +48,17 @@ pub fn calibrate_with_stats(
     let lp_builder = SanosLpBuilder;
     let mut built_lp = lp_builder.build(book, &kernels, &cfg.fit)?;
 
-    // 5) Optional linear-density initialization + LP anchor.
-    let initialization = build_linear_density_initialization(
-        book,
-        &grids,
-        &cfg.fit.initialization,
-        &cfg.fit.solver,
-        Some(&total_variances),
-    )?;
-    if let Some(init) = initialization.as_ref() {
-        add_l1_density_anchor(
-            &mut built_lp.model,
-            &built_lp.layout.q_var_ids,
-            &init.projected,
-            cfg.fit.initialization.anchor_l1_weight,
-        )?;
+    // 5) optional warm-start density
+    let warm_start_density = build_warm_start(&grids, &y, &cfg.fit.initialization)?;
+    if let Some(warm_start) = warm_start_density.as_ref() {
+        add_martingale_density_warm_start(&mut built_lp.model, &built_lp.layout, warm_start)?;
     }
 
-    // 6) Solve LP
-    let sol = solve_lp(&built_lp.model, &cfg.fit.solver)?;
-    let objective_value = evaluate_objective_value(&built_lp.model, &sol.values);
+    // 6) solve LP and 7) extract martingale density + objective value
+    let solved = solve(&built_lp.model, &built_lp.layout, &kernels, &cfg.fit.solver)?;
+    let q = solved.density;
+    let objective_value = solved.objective_value;
 
-    // 7) Extract martingale density
-    let q = extract_density(&built_lp.layout, &sol, &grids)?;
     let tol = DensityTolerances::from_tol(1e-6)?;
     q.validate_marginals(tol)?;
     match q.validate_convex_order(tol) {
@@ -90,27 +74,15 @@ pub fn calibrate_with_stats(
         },
     }
 
-    // 8) Time interpolator
+    // 8) time interpolator
     let interp = cfg.time_interp.build()?;
 
     Ok(CalibrationResult {
         surface: SanosSurface::new(y, q, interp),
-        stats: CalibrationRunStats {
-            objective_value,
-            initialization,
-        },
+        stats: CalibrationRunStats { objective_value },
     })
 }
 
 pub fn calibrate(book: &OptionBook, cfg: &CalibrationConfig) -> SanosResult<SanosSurface> {
     Ok(calibrate_with_stats(book, cfg)?.surface)
-}
-
-fn evaluate_objective_value(model: &crate::fit::lp::model::LpModel, values: &[f64]) -> f64 {
-    model
-        .objective
-        .terms
-        .iter()
-        .map(|t| t.coef * values[t.var])
-        .sum()
 }

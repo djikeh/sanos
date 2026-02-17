@@ -12,7 +12,7 @@ use sanos::calibration::{
     calibrate_with_stats, CalibrationConfig, CalibrationRunStats, ConvexOrderValidationMode,
 };
 use sanos::density::DensityTolerances;
-use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig};
+use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig, WarmStartMode};
 use sanos::grid::StrikeGridPolicyConfig;
 use sanos::interp::TimeInterpConfig;
 use sanos::market::OptionBook;
@@ -305,9 +305,9 @@ fn main() -> Result<()> {
             let surface = run.surface;
             let run_stats = run.stats;
 
-            let baseline_surface = if cfg.fit.initialization.enabled {
+            let baseline_surface = if cfg.fit.initialization.uses_warm_start() {
                 let mut baseline_cfg = cfg.clone();
-                baseline_cfg.fit.initialization.enabled = false;
+                baseline_cfg.fit.initialization.mode = WarmStartMode::None;
                 match calibrate_with_stats(&book, &baseline_cfg) {
                     Ok(baseline_run) => Some(baseline_run.surface),
                     Err(e) => {
@@ -561,12 +561,6 @@ fn build_diagnostics_json(
         near_zero_atoms: usize,
     }
 
-    let initialization_diags = run_stats
-        .initialization
-        .as_ref()
-        .map(|x| x.diagnostics.as_slice())
-        .unwrap_or(&[]);
-
     let marginal_diags: Vec<MarginalDiag> = surface
         .martingale_density()
         .marginals()
@@ -598,11 +592,6 @@ fn build_diagnostics_json(
 
     let find_marginal_diag = |maturity: f64| -> Option<&MarginalDiag> {
         marginal_diags
-            .iter()
-            .find(|d| (d.maturity - maturity).abs() <= 1e-10)
-    };
-    let find_init_diag = |maturity: f64| {
-        initialization_diags
             .iter()
             .find(|d| (d.maturity - maturity).abs() <= 1e-10)
     };
@@ -693,8 +682,6 @@ fn build_diagnostics_json(
         let (mono_max, conv_max) = chain_strike_no_arb(&k_chain, &model_price_chain);
 
         let density = find_marginal_diag(t);
-        let init_diag = find_init_diag(t);
-
         per_maturity.push(DiagnosticsPerMaturity {
             maturity: t,
             n_quotes: agg.n,
@@ -716,13 +703,13 @@ fn build_diagnostics_json(
             density_min: density.map(|d| d.min).unwrap_or(0.0),
             density_max: density.map(|d| d.max).unwrap_or(0.0),
             density_near_zero_atoms: density.map(|d| d.near_zero_atoms).unwrap_or(0),
-            linear_raw_mass: init_diag.map(|d| d.raw_mass),
-            linear_raw_mean: init_diag.map(|d| d.raw_mean),
-            linear_raw_min: init_diag.map(|d| d.raw_min),
-            linear_raw_max: init_diag.map(|d| d.raw_max),
-            linear_projection_needed: init_diag.map(|d| d.projection_needed),
-            linear_projection_l1: init_diag.map(|d| d.l1_distance),
-            linear_projection_l2: init_diag.map(|d| d.l2_distance),
+            linear_raw_mass: None,
+            linear_raw_mean: None,
+            linear_raw_min: None,
+            linear_raw_max: None,
+            linear_projection_needed: None,
+            linear_projection_l1: None,
+            linear_projection_l2: None,
         });
     }
 
@@ -1297,7 +1284,6 @@ mod tests {
         let surface = sample_surface();
         let run_stats = CalibrationRunStats {
             objective_value: 1.23,
-            initialization: None,
         };
 
         let d = build_diagnostics_json(&book, &surface, &run_stats, Some(&surface));

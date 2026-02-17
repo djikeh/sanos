@@ -1,8 +1,8 @@
 use sanos::backbone::bs_call_forward_norm;
 #[cfg(feature = "lp-microlp")]
-use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
-#[cfg(feature = "lp-microlp")]
 use sanos::backbone::{bs_implied_atm_var_from_call, build_backbone};
+#[cfg(feature = "lp-microlp")]
+use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
 #[cfg(feature = "lp-microlp")]
 use sanos::calibration::calibrate;
 #[cfg(feature = "lp-microlp")]
@@ -15,9 +15,9 @@ use sanos::fit::{
     ObjectiveConfig, SanosLpBuilder,
 };
 #[cfg(feature = "lp-microlp")]
-use sanos::grid::StrikeGridPolicyConfig;
-#[cfg(feature = "lp-microlp")]
 use sanos::grid::build_strike_grids;
+#[cfg(feature = "lp-microlp")]
+use sanos::grid::StrikeGridPolicyConfig;
 #[cfg(feature = "lp-microlp")]
 use sanos::interp::TimeInterpConfig;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
@@ -190,7 +190,7 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
 
     // Step 6: density extraction
     let q =
-        extract_density(&built_lp.layout, &sol, &grids).expect("density extraction must succeed");
+        extract_density(&built_lp.layout, &sol, &kernels).expect("density extraction must succeed");
     let tol = DensityTolerances::from_tol(1e-10).unwrap();
     q.validate_marginals(tol).expect("marginals must be valid");
     q.validate_convex_order(tol)

@@ -9,15 +9,16 @@ mod initialization;
 
 pub use config::{
     FitConfig, InitPriceProxyConfig, InitializationConfig, KernelConfig, LpConfig,
-    LpSolverConfig, ObjectiveConfig, OmegaConfig,
+    LpSolverConfig, ObjectiveConfig, OmegaConfig, WarmStartMode,
 };
 pub use kernels::{DenseMat, KernelC, KernelTransition, KernelSet};
 pub use kernel_builder::build_kernels;
-pub use solver::{solve_lp, LpSolution};
+pub use solver::{
+    add_martingale_density_warm_start, solve, solve_lp, LpSolution, SolveResult,
+};
 pub use extract::extract_density;
 pub use initialization::{
-    add_l1_density_anchor, build_linear_density_initialization, compute_raw_linear_density,
-    project_density_with_martingale_constraints, FeasibleDensityDiagnostics,
-    LinearDensityInitialization, LinearDensitySliceDiagnostics, RawLinearDensity,
+    build_strict_linear_martingale_density,
+    build_warm_start, compute_raw_linear_density,
 };
 pub use lp::builder::{LpBuilder, SanosLpBuilder};

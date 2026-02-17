@@ -49,12 +49,11 @@
     },
     "solver": "Microlp",
     "initialization": {
-      "enabled": true,
+      "mode": "MarketWithBackboneFallback",
       "price_proxy": "Mid",
       "feasibility_tol": 1e-08,
       "projection_tol": 1e-10,
-      "near_zero_tol": 1e-10,
-      "anchor_l1_weight": 0.02
+      "near_zero_tol": 1e-10
     }
   },
   "time_interp": "AtmVarianceTime"
