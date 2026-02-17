@@ -1,0 +1,61 @@
+{
+  "snapshot": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\snapshots\\catalogs\\total_variance\\tv_catalog_02_fx_like_symmetric_smile.snapshot.json",
+  "config": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\configs\\robust_hinge_strict.json",
+  "n_maturities": 9,
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "n_atoms": 32,
+      "mass": 1.000000000066547,
+      "mean": 1.0000000000665317
+    },
+    {
+      "maturity": 0.038356164383561646,
+      "n_atoms": 32,
+      "mass": 0.9999999999883983,
+      "mean": 0.9999999999810244
+    },
+    {
+      "maturity": 0.0821917808219178,
+      "n_atoms": 32,
+      "mass": 0.9999999994958116,
+      "mean": 0.9999999993591154
+    },
+    {
+      "maturity": 0.1643835616438356,
+      "n_atoms": 32,
+      "mass": 0.9999999981405671,
+      "mean": 0.9999999981881437
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "n_atoms": 32,
+      "mass": 0.9999999871702218,
+      "mean": 0.9999999865433679
+    },
+    {
+      "maturity": 0.4931506849315068,
+      "n_atoms": 32,
+      "mass": 0.9999999999738837,
+      "mean": 0.999999999965657
+    },
+    {
+      "maturity": 0.7397260273972602,
+      "n_atoms": 32,
+      "mass": 1.000000002433736,
+      "mean": 1.000000002319686
+    },
+    {
+      "maturity": 1.0,
+      "n_atoms": 32,
+      "mass": 0.9999999996540082,
+      "mean": 0.9999999996312159
+    },
+    {
+      "maturity": 2.0,
+      "n_atoms": 32,
+      "mass": 1.0000000001846188,
+      "mean": 1.0000000001709513
+    }
+  ]
+}

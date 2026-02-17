@@ -35,7 +35,7 @@
   },
   "fit": {
     "kernel": {
-      "omega": "One"
+      "omega": "Zero"
     },
     "objective": {
       "L1Mid": {

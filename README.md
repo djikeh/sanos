@@ -53,6 +53,16 @@ Catalog run:
 python tools/sanos.py run --config default --snapshot-catalog total_variance
 ```
 
+Catalog run with per-snapshot config rules + fallback:
+```bash
+python tools/sanos.py run --config-catalog total_variance_robust --snapshot-catalog total_variance
+```
+
+Catalog run with automatic best-config scoring:
+```bash
+python tools/sanos.py run --config-catalog total_variance_robust --snapshot-catalog total_variance --selection-policy best-score
+```
+
 Shortcuts:
 - Windows (from repo root): `sanos.cmd run --config default --snapshot my_snapshot`
 - Linux/macOS (from repo root): `./sanos run --config default --snapshot my_snapshot`
@@ -76,10 +86,21 @@ Then it runs each snapshot and writes:
 - Surfaces: `data/surfaces/catalogs/<catalog>/<snapshot>__<config>/`
 - Images: `data/images/catalogs/<catalog>/<snapshot>__<config>/`
 - Per-run reports: `data/reports/catalogs/<catalog>/<snapshot>__<config>.md`
-- Batch summary report: `data/reports/catalogs/<catalog>/<catalog>__<config>__summary.md`
+- Batch summary report: `data/reports/catalogs/<catalog>/<catalog>__<config-or-catalog-label>__summary.md`
+
+If `--config-catalog` is used:
+- Resolves `data/config_catalogs/<catalog>.json`
+- Picks config candidates per snapshot name (regex rules), then tries them in order
+- `--selection-policy first-success` stops at first successful calibration
+- `--selection-policy best-score` runs all successful candidates and picks the lowest score
+- Score favors: high inside bid/ask, low normalized residuals, smoother IV, low bid/ask and no-arb violations
+- Records effective config and score used in the batch summary table
 
 Optional flags:
 - `--no-validate`
 - `--no-plot`
 - `--n-maturities`
 - `--n-strikes`
+- `--selection-policy`
+- `--score-w-*` (weights for the best-score objective)
+- `--keep-attempt-artifacts` (désactive le nettoyage des essais non retenus)

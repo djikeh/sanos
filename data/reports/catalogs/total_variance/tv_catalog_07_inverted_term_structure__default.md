@@ -12,15 +12,15 @@
 
 ## Global Metrics
 - Number of quotes: `85`
-- Objective value: `1.363580e-01`
+- Objective value: `1.374670e-01`
 - Inside bid/ask ratio: `100.00%`
 - Bid/ask violation (max / mean): `0.000e+00` / `0.000e+00`
-- MAE(mid): `4.593e-07`
-- RMSE(mid): `2.464e-06`
+- MAE(mid): `4.727e-07`
+- RMSE(mid): `2.466e-06`
 - MAE(residual/half-spread): `0.003`
 - IV total variation: `2.862e-01`
 - IV max second diff: `1.259e+00`
-- MAE(iv): `2.026e-05`
+- MAE(iv): `2.042e-05`
 - RMSE(iv): `1.159e-04`
 
 ## No-Arbitrage Diagnostics
@@ -29,16 +29,28 @@
 - Calendar violation (max / mean / count): `0.000e+00` / `0.000e+00` / `0`
 
 ### Interpretation automatique
-La calibration est tres coherente avec le bid/ask (quasi toutes les quotes sont dans le spread). Les residus normalises sont globalement contenus par rapport au demi-spread. Erreur en prix: MAE=4.593e-07, RMSE=2.464e-06. Erreur en volatilite implicite: MAE=2.026e-05, RMSE=1.159e-04. Rugosite IV (global): TV=2.862e-01, max seconde diff=1.259e+00.
+La calibration est tres coherente avec le bid/ask (quasi toutes les quotes sont dans le spread). Les residus normalises sont globalement contenus par rapport au demi-spread. Erreur en prix: MAE=4.727e-07, RMSE=2.466e-06. Erreur en volatilite implicite: MAE=2.042e-05, RMSE=1.159e-04. Rugosite IV (global): TV=2.862e-01, max seconde diff=1.259e+00.
+
+## Oscillation Analysis (Before/After)
+- Baseline IV smoothness (no init): TV=`2.862e-01`, max second diff=`1.259e+00`
+- Current IV smoothness (linear-density init): TV=`2.862e-01`, max second diff=`1.259e+00`
+- Delta (current - baseline): TV=`1.135e-06`, max second diff=`1.301e-09`
+Conclusion: oscillation did not improve globally; inspect per-maturity rows below.
+
+Most improved maturities (delta max second diff):
+- T=0.123288, delta=-5.925e-09, baseline strike=0.8200, current strike=0.8200
+- T=0.493151, delta=-1.243e-09, baseline strike=0.7800, current strike=0.7800
+- T=0.246575, delta=-2.571e-10, baseline strike=0.8600, current strike=0.8600
+- T=0.019178, delta=1.301e-09, baseline strike=0.9333, current strike=0.9333
 
 ## Per Maturity
 | T | n_quotes | inside | bid/ask max | MAE(mid) | MAE(norm) | TV(iv) | max d2(iv) | density mass | density mean | proj? | proj L1 |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 0.019178 | 15 | 100.00% | 0.000e+00 | 1.970e-06 | 0.017 | 7.857e-02 | 1.259e+00 | 1.000000 | 1.000000 | no | 0.000e+00 |
-| 0.057534 | 15 | 100.00% | 0.000e+00 | 1.978e-07 | 0.000 | 6.132e-02 | 8.384e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
+| 0.057534 | 15 | 100.00% | 0.000e+00 | 2.460e-07 | 0.001 | 6.132e-02 | 8.384e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
 | 0.123288 | 14 | 100.00% | 0.000e+00 | 9.331e-09 | 0.000 | 4.241e-02 | 6.731e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
 | 0.246575 | 14 | 100.00% | 0.000e+00 | 4.263e-07 | 0.000 | 3.732e-02 | 5.731e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
-| 0.493151 | 12 | 100.00% | 0.000e+00 | 1.790e-08 | 0.000 | 3.156e-02 | 5.193e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
+| 0.493151 | 12 | 100.00% | 0.000e+00 | 5.245e-08 | 0.000 | 3.156e-02 | 5.193e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
 | 1.000000 | 15 | 100.00% | 0.000e+00 | 1.449e-08 | 0.000 | 3.504e-02 | 4.762e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
 
 Linear density discretization used:

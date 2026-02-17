@@ -1,0 +1,61 @@
+{
+    "backbone":  {
+                     "BsTimeChanged":  {
+                                           "atm_policy":  {
+                                                              "NearestOrLinearLogMoneyness":  {
+                                                                                                  "tol_log":  1E-10
+                                                                                              }
+                                                          },
+                                           "var_floor":  1E-12,
+                                           "enforce_non_decreasing":  true,
+                                           "eta":  0.25
+                                       }
+                 },
+    "grid":  {
+                 "MarketAnchored":  {
+                                        "ensure_atm":  true,
+                                        "wings":  {
+                                                      "n_left":  2,
+                                                      "n_right":  2,
+                                                      "ratio":  1.2
+                                                  },
+                                        "atm_refine":  {
+                                                           "enabled":  false,
+                                                           "steps":  2,
+                                                           "delta_log":  0.05
+                                                       },
+                                        "grid_size":  {
+                                                          "max_points":  80,
+                                                          "keep_all_market_strikes":  true
+                                                      },
+                                        "min_strike":  0.0001,
+                                        "max_strike":  10000.0,
+                                        "min_spacing_log":  0.001
+                                    }
+             },
+    "fit":  {
+                "kernel":  {
+                               "omega":  "Zero"
+                           },
+                "objective":  {
+                                  "L1Mid":  {
+                                                "weight":  1.0
+                                            }
+                              },
+                "lp":  {
+                           "enforce_simplex":  true,
+                           "enforce_nonnegativity":  true,
+                           "include_time_constraints":  true
+                       },
+                "solver":  "Microlp",
+                "initialization":  {
+                                       "enabled":  true,
+                                       "price_proxy":  "Mid",
+                                       "feasibility_tol":  1E-08,
+                                       "projection_tol":  1E-10,
+                                       "near_zero_tol":  1E-10,
+                                       "anchor_l1_weight":  0.001
+                                   }
+            },
+    "time_interp":  "AtmVarianceTime"
+}

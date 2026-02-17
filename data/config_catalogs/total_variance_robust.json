@@ -1,0 +1,49 @@
+{
+  "default_config": "default",
+  "fallback_configs": [
+    "robust_l1_anchor_strong",
+    "robust_hinge_strict",
+    "robust_l1_smooth"
+  ],
+  "rules": [
+    {
+      "match": "fx_like|twist",
+      "configs": [
+        "robust_hinge_strict",
+        "robust_l1_anchor_strong",
+        "default"
+      ]
+    },
+    {
+      "match": "rates_like|short_term_event|inverted_term_structure",
+      "configs": [
+        "robust_l1_anchor_strong",
+        "default",
+        "robust_hinge_strict"
+      ]
+    },
+    {
+      "match": "steep_upward_term_structure|high_vol_regime_long_end",
+      "configs": [
+        "robust_l1_smooth",
+        "default",
+        "robust_l1_anchor_strong"
+      ]
+    },
+    {
+      "match": "strong_wings",
+      "configs": [
+        "default",
+        "robust_hinge_strict",
+        "robust_l1_anchor_strong"
+      ]
+    },
+    {
+      "match": "equity_like|weak_wings",
+      "configs": [
+        "default",
+        "robust_l1_anchor_strong"
+      ]
+    }
+  ]
+}

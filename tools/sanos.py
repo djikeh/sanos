@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -66,6 +69,182 @@ def ensure_dir(path: Path) -> None:
 
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _is_non_empty_str(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _dedup_keep_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def resolve_config_catalog(root: Path, catalog: str) -> tuple[Path, dict]:
+    catalog_name = stem_name(catalog)
+    path = root / "data" / "config_catalogs" / f"{catalog_name}.json"
+    if not path.exists():
+        raise SystemExit(f"Missing config catalog file: {path}")
+
+    payload = load_json(path)
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Invalid config catalog format (expected object): {path}")
+
+    default_config = payload.get("default_config")
+    if not _is_non_empty_str(default_config):
+        raise SystemExit(f"Invalid or missing 'default_config' in {path}")
+    default_config = stem_name(default_config.strip())
+
+    fallback_configs_raw = payload.get("fallback_configs", [])
+    if fallback_configs_raw is None:
+        fallback_configs_raw = []
+    if not isinstance(fallback_configs_raw, list):
+        raise SystemExit(f"Invalid 'fallback_configs' (expected array) in {path}")
+    fallback_configs = []
+    for cfg in fallback_configs_raw:
+        if not _is_non_empty_str(cfg):
+            raise SystemExit(f"Invalid config name in 'fallback_configs' in {path}")
+        fallback_configs.append(stem_name(cfg.strip()))
+
+    rules_raw = payload.get("rules", [])
+    if rules_raw is None:
+        rules_raw = []
+    if not isinstance(rules_raw, list):
+        raise SystemExit(f"Invalid 'rules' (expected array) in {path}")
+
+    rules: list[dict] = []
+    for idx, rule in enumerate(rules_raw):
+        if not isinstance(rule, dict):
+            raise SystemExit(f"Invalid rule #{idx} in {path}: expected object")
+        pattern = rule.get("match")
+        configs_raw = rule.get("configs")
+        if not _is_non_empty_str(pattern):
+            raise SystemExit(f"Invalid or missing 'match' in rule #{idx} of {path}")
+        if not isinstance(configs_raw, list) or not configs_raw:
+            raise SystemExit(f"Invalid or missing 'configs' in rule #{idx} of {path}")
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise SystemExit(
+                f"Invalid regex in rule #{idx} of {path}: {pattern} ({exc})"
+            ) from exc
+
+        cfgs: list[str] = []
+        for cfg in configs_raw:
+            if not _is_non_empty_str(cfg):
+                raise SystemExit(
+                    f"Invalid config name in rule #{idx} of {path}: {cfg!r}"
+                )
+            cfgs.append(stem_name(cfg.strip()))
+
+        rules.append({"match": pattern, "configs": cfgs})
+
+    spec = {
+        "default_config": default_config,
+        "fallback_configs": fallback_configs,
+        "rules": rules,
+    }
+    return path, spec
+
+
+def config_candidates_for_snapshot(catalog_spec: dict, snapshot_name: str) -> list[str]:
+    candidates: list[str] = []
+    for rule in catalog_spec["rules"]:
+        if re.search(rule["match"], snapshot_name):
+            candidates.extend(rule["configs"])
+            break
+    candidates.append(catalog_spec["default_config"])
+    candidates.extend(catalog_spec["fallback_configs"])
+    return _dedup_keep_order(candidates)
+
+
+def _non_negative_float(value: object, *, default: float = 0.0) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(out):
+        return default
+    return max(0.0, out)
+
+
+def _unit_interval(value: object, *, default: float = 0.0) -> float:
+    out = _non_negative_float(value, default=default)
+    return min(1.0, max(0.0, out))
+
+
+def score_candidate_from_diagnostics(
+    diagnostics_path: Path,
+    *,
+    w_inside: float,
+    w_mae_spread_norm: float,
+    w_iv_max_second_diff: float,
+    w_iv_total_variation: float,
+    w_bid_ask_violation: float,
+    w_arb_count: float,
+    w_arb_magnitude: float,
+) -> tuple[float, dict]:
+    diagnostics = load_json(diagnostics_path)
+    summary = diagnostics.get("summary", {})
+    no_arb = diagnostics.get("no_arbitrage", {})
+
+    inside = _unit_interval(summary.get("inside_bid_ask_ratio"), default=0.0)
+    mae_spread_norm = _non_negative_float(summary.get("mae_spread_norm"), default=1e9)
+    iv_max_second_diff = _non_negative_float(summary.get("iv_max_second_diff"), default=0.0)
+    iv_total_variation = _non_negative_float(summary.get("iv_total_variation"), default=0.0)
+    max_bid_ask_violation = _non_negative_float(
+        summary.get("max_bid_ask_violation"), default=0.0
+    )
+
+    mono_viol = int(_non_negative_float(no_arb.get("monotonicity_violations"), default=0.0))
+    conv_viol = int(_non_negative_float(no_arb.get("convexity_violations"), default=0.0))
+    cal_viol = int(_non_negative_float(no_arb.get("calendar_violations"), default=0.0))
+    arb_count = mono_viol + conv_viol + cal_viol
+
+    arb_magnitude = max(
+        _non_negative_float(no_arb.get("monotonicity_max_violation"), default=0.0),
+        _non_negative_float(no_arb.get("convexity_max_violation"), default=0.0),
+        _non_negative_float(no_arb.get("calendar_max_violation"), default=0.0),
+    )
+
+    penalties = {
+        "inside_gap": 1.0 - inside,
+        "mae_spread_norm_log": math.log1p(mae_spread_norm),
+        "iv_max_second_diff_log": math.log1p(iv_max_second_diff),
+        "iv_total_variation_log": math.log1p(iv_total_variation),
+        "bid_ask_violation_log": math.log1p(max_bid_ask_violation),
+        "arb_count": float(arb_count),
+        "arb_magnitude_log": math.log1p(arb_magnitude),
+    }
+
+    score = (
+        w_inside * penalties["inside_gap"]
+        + w_mae_spread_norm * penalties["mae_spread_norm_log"]
+        + w_iv_max_second_diff * penalties["iv_max_second_diff_log"]
+        + w_iv_total_variation * penalties["iv_total_variation_log"]
+        + w_bid_ask_violation * penalties["bid_ask_violation_log"]
+        + w_arb_count * penalties["arb_count"]
+        + w_arb_magnitude * penalties["arb_magnitude_log"]
+    )
+
+    components = {
+        "score": score,
+        "inside_bid_ask_ratio": inside,
+        "mae_spread_norm": mae_spread_norm,
+        "iv_max_second_diff": iv_max_second_diff,
+        "iv_total_variation": iv_total_variation,
+        "max_bid_ask_violation": max_bid_ask_violation,
+        "arb_count": arb_count,
+        "arb_magnitude": arb_magnitude,
+        "penalties": penalties,
+    }
+    return score, components
 
 
 def _quality_comment(summary: dict) -> str:
@@ -307,6 +486,46 @@ def build_markdown_report(
     return report_path
 
 
+def cleanup_unused_run_artifacts(
+    *,
+    surfaces_root: Path,
+    images_root: Path,
+    reports_dir: Path,
+    attempted_run_ids: list[str],
+    keep_run_ids: set[str],
+) -> None:
+    removed = 0
+    failed: list[str] = []
+    for run_id in _dedup_keep_order(attempted_run_ids):
+        if run_id in keep_run_ids:
+            continue
+
+        surfaces_dir = surfaces_root / run_id
+        images_dir = images_root / run_id
+        report_path = reports_dir / f"{run_id}.md"
+
+        for path in [surfaces_dir, images_dir]:
+            if path.exists():
+                try:
+                    shutil.rmtree(path, ignore_errors=False)
+                    removed += 1
+                except OSError as exc:
+                    failed.append(f"{path} ({exc})")
+        if report_path.exists():
+            try:
+                report_path.unlink()
+                removed += 1
+            except OSError as exc:
+                failed.append(f"{report_path} ({exc})")
+
+    if removed > 0:
+        print(f"Cleanup: removed {removed} unused artifacts.")
+    if failed:
+        print("Cleanup warning: failed to remove some artifacts:")
+        for item in failed:
+            print(f"- {item}")
+
+
 def run_single_snapshot(
     *,
     root: Path,
@@ -435,90 +654,35 @@ def run_single_snapshot(
     return run_id, report_path
 
 
-def write_catalog_summary(
+def run_snapshot_with_config_candidates(
     *,
+    root: Path,
+    config_candidates: list[tuple[str, Path]],
+    snapshot_path: Path,
+    snap_name: str,
+    surfaces_root: Path,
+    images_root: Path,
     reports_dir: Path,
-    catalog_name: str,
-    cfg_name: str,
-    config_path: Path,
-    snapshot_paths: list[Path],
-    run_results: dict[str, Path],
-    failures: dict[str, str],
-) -> Path:
-    ensure_dir(reports_dir)
-    summary_path = reports_dir / f"{catalog_name}__{cfg_name}__summary.md"
+    args: argparse.Namespace,
+    selection_policy: str,
+) -> tuple[str, Path, str, float]:
+    if not config_candidates:
+        raise SystemExit(f"No config candidates provided for snapshot: {snap_name}")
+    if selection_policy not in {"first-success", "best-score"}:
+        raise SystemExit(f"Invalid selection policy: {selection_policy}")
 
-    lines: list[str] = []
-    lines.append(f"# Catalog Run Summary - `{catalog_name}__{cfg_name}`")
-    lines.append("")
-    lines.append("## Inputs")
-    lines.append(f"- Config: `{config_path}`")
-    lines.append(f"- Catalog: `{catalog_name}`")
-    lines.append(f"- Snapshots count: `{len(snapshot_paths)}`")
-    lines.append("")
-    lines.append("## Results")
-    lines.append(f"- Success: `{len(run_results)}`")
-    lines.append(f"- Failed: `{len(failures)}`")
-    lines.append("")
-    lines.append("| Snapshot | Status | Report | Error |")
-    lines.append("|---|---|---|---|")
+    attempt_errors: list[str] = []
+    attempted_run_ids: list[str] = []
+    total = len(config_candidates)
+    successes: list[dict] = []
 
-    for snapshot_path in snapshot_paths:
-        snap_name = snapshot_name_from_path(snapshot_path)
-        report_path = run_results.get(snap_name)
-        if report_path is not None:
-            rel_report = Path(os.path.relpath(report_path, reports_dir))
-            lines.append(f"| `{snap_name}` | success | `{rel_report}` | - |")
-            continue
-        error = failures.get(snap_name, "Unknown error").replace("|", "\\|")
-        lines.append(f"| `{snap_name}` | failed | - | `{error}` |")
-
-    lines.append("")
-    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return summary_path
-
-
-def run_pipeline(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
-    cfg_name = stem_name(args.config)
-    config_path = resolve_named_json(root, "configs", cfg_name)
-
-    if args.snapshot is not None:
-        snap_name = stem_name(args.snapshot)
-        snapshot_path = resolve_named_json(root, "snapshots", snap_name)
-        run_single_snapshot(
-            root=root,
-            config_path=config_path,
-            snapshot_path=snapshot_path,
-            cfg_name=cfg_name,
-            snap_name=snap_name,
-            surfaces_root=root / "data" / "surfaces",
-            images_root=root / "data" / "images",
-            reports_dir=root / "data" / "reports",
-            args=args,
-        )
-        return
-
-    catalog_name = stem_name(args.snapshot_catalog)
-    catalog_dir, snapshot_paths = resolve_snapshot_catalog(root, catalog_name)
-    surfaces_root = root / "data" / "surfaces" / "catalogs" / catalog_name
-    images_root = root / "data" / "images" / "catalogs" / catalog_name
-    reports_dir = root / "data" / "reports" / "catalogs" / catalog_name
-    ensure_dir(surfaces_root)
-    ensure_dir(images_root)
-    ensure_dir(reports_dir)
-
-    run_results: dict[str, Path] = {}
-    failures: dict[str, str] = {}
-
-    total = len(snapshot_paths)
-    print(f"Running snapshot catalog '{catalog_name}' ({total} snapshots)")
-    print(f"Catalog dir: {catalog_dir}")
-    for i, snapshot_path in enumerate(snapshot_paths, start=1):
-        snap_name = snapshot_name_from_path(snapshot_path)
-        print(f"\n[{i}/{total}] Snapshot: {snapshot_path}")
+    for idx, (cfg_name, config_path) in enumerate(config_candidates, start=1):
+        run_id_candidate = f"{snap_name}__{cfg_name}"
+        attempted_run_ids.append(run_id_candidate)
+        if total > 1:
+            print(f"Trying config [{idx}/{total}] for {snap_name}: {cfg_name}")
         try:
-            _, report_path = run_single_snapshot(
+            run_id, report_path = run_single_snapshot(
                 root=root,
                 config_path=config_path,
                 snapshot_path=snapshot_path,
@@ -529,7 +693,286 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 reports_dir=reports_dir,
                 args=args,
             )
-            run_results[snap_name] = report_path
+            diagnostics_path = surfaces_root / run_id / "diagnostics.json"
+            score, components = score_candidate_from_diagnostics(
+                diagnostics_path,
+                w_inside=args.score_w_inside,
+                w_mae_spread_norm=args.score_w_mae_spread_norm,
+                w_iv_max_second_diff=args.score_w_iv_max_second_diff,
+                w_iv_total_variation=args.score_w_iv_total_variation,
+                w_bid_ask_violation=args.score_w_bid_ask_violation,
+                w_arb_count=args.score_w_arb_count,
+                w_arb_magnitude=args.score_w_arb_magnitude,
+            )
+            print(
+                "Score "
+                f"{cfg_name}: {score:.6f} "
+                f"(inside={components['inside_bid_ask_ratio']:.4f}, "
+                f"mae_norm={components['mae_spread_norm']:.4g}, "
+                f"d2={components['iv_max_second_diff']:.4g}, "
+                f"arb={components['arb_count']})"
+            )
+
+            successes.append(
+                {
+                    "run_id": run_id,
+                    "report_path": report_path,
+                    "cfg_name": cfg_name,
+                    "score": score,
+                }
+            )
+
+            if selection_policy == "first-success":
+                if not args.keep_attempt_artifacts:
+                    cleanup_unused_run_artifacts(
+                        surfaces_root=surfaces_root,
+                        images_root=images_root,
+                        reports_dir=reports_dir,
+                        attempted_run_ids=attempted_run_ids,
+                        keep_run_ids={run_id},
+                    )
+                if idx > 1:
+                    print(f"Selected config '{cfg_name}' for snapshot '{snap_name}'.")
+                return run_id, report_path, cfg_name, score
+        except SystemExit as exc:
+            reason = str(exc.code) if exc.code is not None else "SystemExit"
+            attempt_errors.append(f"{cfg_name}: {reason}")
+            print(f"Config '{cfg_name}' failed for '{snap_name}': {reason}")
+        except Exception as exc:  # noqa: BLE001
+            reason = str(exc)
+            attempt_errors.append(f"{cfg_name}: {reason}")
+            print(f"Config '{cfg_name}' failed for '{snap_name}': {reason}")
+
+    if successes:
+        best = min(successes, key=lambda x: x["score"])
+        if not args.keep_attempt_artifacts:
+            cleanup_unused_run_artifacts(
+                surfaces_root=surfaces_root,
+                images_root=images_root,
+                reports_dir=reports_dir,
+                attempted_run_ids=attempted_run_ids,
+                keep_run_ids={best["run_id"]},
+            )
+        print(
+            f"Selected best-score config '{best['cfg_name']}' for '{snap_name}' "
+            f"(score={best['score']:.6f})."
+        )
+        return (
+            best["run_id"],
+            best["report_path"],
+            best["cfg_name"],
+            best["score"],
+        )
+
+    if not args.keep_attempt_artifacts:
+        cleanup_unused_run_artifacts(
+            surfaces_root=surfaces_root,
+            images_root=images_root,
+            reports_dir=reports_dir,
+            attempted_run_ids=attempted_run_ids,
+            keep_run_ids=set(),
+        )
+
+    joined = "; ".join(attempt_errors) if attempt_errors else "unknown error"
+    raise SystemExit(f"all config attempts failed ({joined})")
+
+
+def write_catalog_summary(
+    *,
+    reports_dir: Path,
+    catalog_name: str,
+    cfg_label: str,
+    config_selection: str,
+    selection_policy: str,
+    snapshot_paths: list[Path],
+    run_results: dict[str, dict[str, object]],
+    failures: dict[str, str],
+) -> Path:
+    ensure_dir(reports_dir)
+    summary_path = reports_dir / f"{catalog_name}__{cfg_label}__summary.md"
+
+    lines: list[str] = []
+    lines.append(f"# Catalog Run Summary - `{catalog_name}__{cfg_label}`")
+    lines.append("")
+    lines.append("## Inputs")
+    lines.append(f"- Config selection: `{config_selection}`")
+    lines.append(f"- Selection policy: `{selection_policy}`")
+    lines.append(f"- Catalog: `{catalog_name}`")
+    lines.append(f"- Snapshots count: `{len(snapshot_paths)}`")
+    lines.append("")
+    lines.append("## Results")
+    lines.append(f"- Success: `{len(run_results)}`")
+    lines.append(f"- Failed: `{len(failures)}`")
+    lines.append("")
+    lines.append("| Snapshot | Status | Config | Score | Report | Error |")
+    lines.append("|---|---|---|---:|---|---|")
+
+    for snapshot_path in snapshot_paths:
+        snap_name = snapshot_name_from_path(snapshot_path)
+        run_data = run_results.get(snap_name)
+        if run_data is not None:
+            report_path = run_data["report_path"]
+            cfg_used = run_data["config"]
+            score = run_data.get("score")
+            score_txt = "-" if score is None else f"{float(score):.6f}"
+            rel_report = Path(os.path.relpath(report_path, reports_dir))
+            lines.append(
+                f"| `{snap_name}` | success | `{cfg_used}` | `{score_txt}` | `{rel_report}` | - |"
+            )
+            continue
+        error = failures.get(snap_name, "Unknown error").replace("|", "\\|")
+        lines.append(f"| `{snap_name}` | failed | - | - | - | `{error}` |")
+
+    lines.append("")
+    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return summary_path
+
+
+def run_pipeline(args: argparse.Namespace) -> None:
+    root = Path(args.root).resolve()
+    selection_policy = args.selection_policy
+    for field in [
+        "score_w_inside",
+        "score_w_mae_spread_norm",
+        "score_w_iv_max_second_diff",
+        "score_w_iv_total_variation",
+        "score_w_bid_ask_violation",
+        "score_w_arb_count",
+        "score_w_arb_magnitude",
+    ]:
+        value = getattr(args, field)
+        if not isinstance(value, float) or not math.isfinite(value) or value < 0.0:
+            raise SystemExit(
+                f"Invalid score weight '{field}': {value} (must be finite and >= 0)"
+            )
+    config_catalog_path: Path | None = None
+    config_catalog_spec: dict | None = None
+    if args.config is not None:
+        cfg_name = stem_name(args.config)
+        config_path = resolve_named_json(root, "configs", cfg_name)
+        cfg_label = cfg_name
+        config_selection = str(config_path)
+    else:
+        catalog_name = stem_name(args.config_catalog)
+        config_catalog_path, config_catalog_spec = resolve_config_catalog(root, catalog_name)
+        cfg_name = ""
+        config_path = Path()
+        cfg_label = f"catalog_{catalog_name}"
+        config_selection = str(config_catalog_path)
+
+    if args.snapshot is not None:
+        snapshot_path = resolve_named_json(root, "snapshots", stem_name(args.snapshot))
+        snap_name = snapshot_name_from_path(snapshot_path)
+        if args.config is not None:
+            run_single_snapshot(
+                root=root,
+                config_path=config_path,
+                snapshot_path=snapshot_path,
+                cfg_name=cfg_name,
+                snap_name=snap_name,
+                surfaces_root=root / "data" / "surfaces",
+                images_root=root / "data" / "images",
+                reports_dir=root / "data" / "reports",
+                args=args,
+            )
+            return
+
+        assert config_catalog_spec is not None
+        config_names = config_candidates_for_snapshot(config_catalog_spec, snap_name)
+        config_candidates = [
+            (name, resolve_named_json(root, "configs", name))
+            for name in config_names
+        ]
+        print(f"Snapshot '{snap_name}' config candidates: {', '.join(config_names)}")
+        run_snapshot_with_config_candidates(
+            root=root,
+            config_candidates=config_candidates,
+            snapshot_path=snapshot_path,
+            snap_name=snap_name,
+            surfaces_root=root / "data" / "surfaces",
+            images_root=root / "data" / "images",
+            reports_dir=root / "data" / "reports",
+            args=args,
+            selection_policy=selection_policy,
+        )
+        return
+
+    snapshot_catalog_name = stem_name(args.snapshot_catalog)
+    catalog_dir, snapshot_paths = resolve_snapshot_catalog(root, snapshot_catalog_name)
+    surfaces_root = root / "data" / "surfaces" / "catalogs" / snapshot_catalog_name
+    images_root = root / "data" / "images" / "catalogs" / snapshot_catalog_name
+    reports_dir = root / "data" / "reports" / "catalogs" / snapshot_catalog_name
+    ensure_dir(surfaces_root)
+    ensure_dir(images_root)
+    ensure_dir(reports_dir)
+
+    run_results: dict[str, dict[str, object]] = {}
+    failures: dict[str, str] = {}
+
+    total = len(snapshot_paths)
+    print(f"Running snapshot catalog '{snapshot_catalog_name}' ({total} snapshots)")
+    print(f"Catalog dir: {catalog_dir}")
+    if config_catalog_path is not None:
+        print(f"Config catalog: {config_catalog_path}")
+    else:
+        print(f"Config: {config_path}")
+    print(f"Selection policy: {selection_policy}")
+
+    for i, snapshot_path in enumerate(snapshot_paths, start=1):
+        snap_name = snapshot_name_from_path(snapshot_path)
+        print(f"\n[{i}/{total}] Snapshot: {snapshot_path}")
+        try:
+            if args.config is not None:
+                run_id, report_path = run_single_snapshot(
+                    root=root,
+                    config_path=config_path,
+                    snapshot_path=snapshot_path,
+                    cfg_name=cfg_name,
+                    snap_name=snap_name,
+                    surfaces_root=surfaces_root,
+                    images_root=images_root,
+                    reports_dir=reports_dir,
+                    args=args,
+                )
+                score, _ = score_candidate_from_diagnostics(
+                    surfaces_root / run_id / "diagnostics.json",
+                    w_inside=args.score_w_inside,
+                    w_mae_spread_norm=args.score_w_mae_spread_norm,
+                    w_iv_max_second_diff=args.score_w_iv_max_second_diff,
+                    w_iv_total_variation=args.score_w_iv_total_variation,
+                    w_bid_ask_violation=args.score_w_bid_ask_violation,
+                    w_arb_count=args.score_w_arb_count,
+                    w_arb_magnitude=args.score_w_arb_magnitude,
+                )
+                run_results[snap_name] = {
+                    "report_path": report_path,
+                    "config": cfg_name,
+                    "score": score,
+                }
+            else:
+                assert config_catalog_spec is not None
+                config_names = config_candidates_for_snapshot(config_catalog_spec, snap_name)
+                config_candidates = [
+                    (name, resolve_named_json(root, "configs", name))
+                    for name in config_names
+                ]
+                print(f"Config candidates: {', '.join(config_names)}")
+                _, report_path, cfg_used, score = run_snapshot_with_config_candidates(
+                    root=root,
+                    config_candidates=config_candidates,
+                    snapshot_path=snapshot_path,
+                    snap_name=snap_name,
+                    surfaces_root=surfaces_root,
+                    images_root=images_root,
+                    reports_dir=reports_dir,
+                    args=args,
+                    selection_policy=selection_policy,
+                )
+                run_results[snap_name] = {
+                    "report_path": report_path,
+                    "config": cfg_used,
+                    "score": score,
+                }
         except SystemExit as exc:
             reason = str(exc.code) if exc.code is not None else "SystemExit"
             failures[snap_name] = reason
@@ -540,17 +983,21 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
     summary_path = write_catalog_summary(
         reports_dir=reports_dir,
-        catalog_name=catalog_name,
-        cfg_name=cfg_name,
-        config_path=config_path,
+        catalog_name=snapshot_catalog_name,
+        cfg_label=cfg_label,
+        config_selection=config_selection,
+        selection_policy=selection_policy,
         snapshot_paths=snapshot_paths,
         run_results=run_results,
         failures=failures,
     )
 
     print("\nCATALOG DONE")
-    print("Catalog   :", catalog_name)
-    print("Config    :", config_path)
+    print("Catalog   :", snapshot_catalog_name)
+    if config_catalog_path is not None:
+        print("Config    :", config_catalog_path)
+    else:
+        print("Config    :", config_path)
     print("Reports   :", reports_dir)
     print("Summary   :", summary_path)
     print("Success   :", len(run_results))
@@ -572,7 +1019,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Run calibration by config/snapshot names")
-    run.add_argument("--config", required=True, help="Config file name in data/configs (without .json)")
+    run_cfg = run.add_mutually_exclusive_group(required=True)
+    run_cfg.add_argument(
+        "--config",
+        help="Config file name in data/configs (without .json)",
+    )
+    run_cfg.add_argument(
+        "--config-catalog",
+        help="Config catalog file name in data/config_catalogs (without .json)",
+    )
     run_input = run.add_mutually_exclusive_group(required=True)
     run_input.add_argument("--snapshot", help="Snapshot file name in data/snapshots (without .json)")
     run_input.add_argument(
@@ -584,6 +1039,59 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--python", default=sys.executable, help="Python executable for plot script")
     run.add_argument("--no-validate", action="store_true", help="Skip snapshot validation step")
     run.add_argument("--no-plot", action="store_true", help="Skip plot generation")
+    run.add_argument(
+        "--keep-attempt-artifacts",
+        action="store_true",
+        help="Keep artifacts from non-selected config attempts (debug mode)",
+    )
+    run.add_argument(
+        "--selection-policy",
+        choices=["first-success", "best-score"],
+        default="first-success",
+        help="Config selection strategy when multiple config candidates are available",
+    )
+    run.add_argument(
+        "--score-w-inside",
+        type=float,
+        default=100.0,
+        help="Score weight for (1 - inside bid/ask ratio)",
+    )
+    run.add_argument(
+        "--score-w-mae-spread-norm",
+        type=float,
+        default=8.0,
+        help="Score weight for log(1 + MAE residual normalized by half-spread)",
+    )
+    run.add_argument(
+        "--score-w-iv-max-second-diff",
+        type=float,
+        default=1.0,
+        help="Score weight for log(1 + max second diff of model IV)",
+    )
+    run.add_argument(
+        "--score-w-iv-total-variation",
+        type=float,
+        default=0.3,
+        help="Score weight for log(1 + total variation of model IV)",
+    )
+    run.add_argument(
+        "--score-w-bid-ask-violation",
+        type=float,
+        default=20.0,
+        help="Score weight for log(1 + max bid/ask violation)",
+    )
+    run.add_argument(
+        "--score-w-arb-count",
+        type=float,
+        default=1_000_000.0,
+        help="Score weight for arbitrage violation count",
+    )
+    run.add_argument(
+        "--score-w-arb-magnitude",
+        type=float,
+        default=1_000_000.0,
+        help="Score weight for log(1 + max arbitrage violation magnitude)",
+    )
     run.set_defaults(func=run_pipeline)
 
     return parser
