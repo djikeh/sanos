@@ -12,7 +12,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use sanos::backbone::bs::bs_call_forward_norm;
+use sanos::backbone::bs_call_forward_norm;
 use sanos::backbone::TimeChangedLognormal;
 use sanos::calibration::CalibrationConfig;
 use sanos::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
@@ -352,7 +352,7 @@ pub fn surface_snapshot_v1_to_sanos_surface(snap: &SurfaceSnapshotV1) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sanos::backbone::bs::bs_call_forward_norm;
+    use sanos::backbone::bs_call_forward_norm;
     use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
     use sanos::calibration::{CalibrationConfig, ConvexOrderValidationMode};
     use sanos::fit::FitConfig;

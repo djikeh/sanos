@@ -1,10 +1,13 @@
-use sanos::backbone::bs::bs_call_forward_norm;
+use sanos::backbone::bs_call_forward_norm;
 use sanos::backbone::{build_backbone_with_total_variances, BackboneConfig, BsTimeChangedConfig};
+#[cfg(feature = "lp-microlp")]
 use sanos::calibration::{calibrate, CalibrationConfig, ConvexOrderValidationMode};
+#[cfg(feature = "lp-microlp")]
 use sanos::fit::{FitConfig, LpSolverConfig};
 use sanos::grid::{
     build_strike_grids_with_variances, LogMoneynessQuantilesGridConfig, StrikeGridPolicyConfig,
 };
+#[cfg(feature = "lp-microlp")]
 use sanos::interp::TimeInterpConfig;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
 
@@ -108,6 +111,7 @@ fn snapshot_quantile_grid_includes_market_strikes_and_stays_bounded() {
     }
 }
 
+#[cfg(feature = "lp-microlp")]
 #[test]
 fn calibrate_runs_with_log_moneyness_quantiles_grid_policy() {
     let book = load_book_from_snapshot();

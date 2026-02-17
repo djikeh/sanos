@@ -1,6 +1,6 @@
 use crate::error::{SanosError, SanosResult};
 use crate::fit::config::LpSolverConfig;
-use crate::fit::lp::model::{LpModel, Sense};
+use crate::fit::lp::model::LpModel;
 
 #[derive(Debug, Clone)]
 pub struct LpSolution {
@@ -8,6 +8,7 @@ pub struct LpSolution {
 }
 
 pub fn solve_lp(model: &LpModel, cfg: &LpSolverConfig) -> SanosResult<LpSolution> {
+    cfg.validate_available()?;
     match cfg {
         LpSolverConfig::Microlp => solve_with_microlp(model),
         LpSolverConfig::Cbc {
@@ -24,6 +25,7 @@ fn solve_with_cbc(model: &LpModel, msg: bool, time_limit_sec: Option<u64>) -> Sa
         WithTimeLimit,
     };
     use good_lp::{variable, Expression, ProblemVariables, Solution, SolverModel};
+    use crate::fit::lp::model::Sense;
 
     let mut vars = ProblemVariables::new();
     let mut vhandles = Vec::with_capacity(model.vars.len());
@@ -91,6 +93,7 @@ fn solve_with_cbc(_model: &LpModel, _msg: bool, _time_limit_sec: Option<u64>) ->
 fn solve_with_microlp(model: &LpModel) -> SanosResult<LpSolution> {
     use good_lp::solvers::microlp::microlp;
     use good_lp::{variable, Expression, ProblemVariables, Solution, SolverModel};
+    use crate::fit::lp::model::Sense;
 
     let mut vars = ProblemVariables::new();
     let mut vhandles = Vec::with_capacity(model.vars.len());

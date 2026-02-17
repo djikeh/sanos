@@ -53,6 +53,7 @@ pub struct LinearDensityInitialization {
 ///   `p_0 = 1 + d_0`,
 ///   `p_i = d_i - d_{i-1}` for interior nodes,
 ///   `p_{n-1} = -d_{n-2}`.
+///
 /// This is the discrete second-difference construction in the spirit of SANOS Remark 2.11.
 pub fn compute_raw_linear_density(strikes: &[f64], calls: &[f64]) -> SanosResult<RawLinearDensity> {
     validate_strikes_and_calls(strikes, calls)?;
@@ -706,7 +707,7 @@ fn interpolate_calls_on_grid(
     Ok(out)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "lp-microlp"))]
 mod tests {
     use super::*;
 

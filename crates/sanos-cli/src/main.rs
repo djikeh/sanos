@@ -1153,7 +1153,7 @@ fn logspace(start: f64, end: f64, n: usize) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sanos::backbone::bs::bs_call_forward_norm;
+    use sanos::backbone::bs_call_forward_norm;
     use sanos::backbone::TimeChangedLognormal;
     use sanos::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
     use sanos::interp::LinearTime;

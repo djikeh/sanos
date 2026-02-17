@@ -49,7 +49,7 @@ pub fn calibrate_with_stats(
     let kernels = build_kernels(book, &grids, &y, &cfg.fit.kernel)?;
 
     // 4) LP build
-    let lp_builder = SanosLpBuilder::default();
+    let lp_builder = SanosLpBuilder;
     let mut built_lp = lp_builder.build(book, &kernels, &cfg.fit)?;
 
     // 5) Optional linear-density initialization + LP anchor.

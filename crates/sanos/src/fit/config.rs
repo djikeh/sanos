@@ -38,7 +38,8 @@ pub enum ObjectiveConfig {
     /// SANOS paper-style robust objective:
     /// - w * (epsilon_inside * |mid - model|
     ///      + slack_penalty * (max(0, bid-model) + max(0, model-ask)))
-    /// where default `w` follows Eq. (26): `quote.weight / (ask-bid)`.
+    ///
+    ///   where default `w` follows Eq. (26): `quote.weight / (ask-bid)`.
     HingeBidAsk {
         slack_penalty: f64,
         epsilon_inside: f64,
@@ -172,6 +173,7 @@ impl Default for InitializationConfig {
 }
 
 #[inline]
+#[cfg(feature = "serde")]
 const fn default_true() -> bool {
     true
 }
@@ -220,6 +222,31 @@ impl Default for LpSolverConfig {
     }
 }
 
+impl LpSolverConfig {
+    pub fn validate_available(&self) -> SanosResult<()> {
+        match self {
+            LpSolverConfig::Microlp => {
+                if cfg!(feature = "lp-microlp") {
+                    Ok(())
+                } else {
+                    Err(SanosError::NotImplemented {
+                        what: "Microlp solver selected but feature `lp-microlp` is not enabled.",
+                    })
+                }
+            }
+            LpSolverConfig::Cbc { .. } => {
+                if cfg!(feature = "lp-cbc") {
+                    Ok(())
+                } else {
+                    Err(SanosError::NotImplemented {
+                        what: "CBC solver selected but feature `lp-cbc` is not enabled.",
+                    })
+                }
+            }
+        }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FitConfig {
@@ -245,8 +272,42 @@ impl Default for FitConfig {
 
 impl FitConfig {
     pub fn validate(&self) -> SanosResult<()> {
+        self.solver.validate_available()?;
         self.objective.validate()?;
         self.initialization.validate()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fit_config_validate_checks_solver_backend_availability() {
+        let cfg = FitConfig::default();
+
+        #[cfg(feature = "lp-microlp")]
+        assert!(cfg.validate().is_ok());
+
+        #[cfg(not(feature = "lp-microlp"))]
+        assert!(matches!(cfg.validate(), Err(SanosError::NotImplemented { .. })));
+    }
+
+    #[test]
+    fn cbc_solver_validation_is_feature_gated() {
+        let cfg = LpSolverConfig::Cbc {
+            msg: false,
+            time_limit_sec: None,
+        };
+
+        #[cfg(feature = "lp-cbc")]
+        assert!(cfg.validate_available().is_ok());
+
+        #[cfg(not(feature = "lp-cbc"))]
+        assert!(matches!(
+            cfg.validate_available(),
+            Err(SanosError::NotImplemented { .. })
+        ));
     }
 }

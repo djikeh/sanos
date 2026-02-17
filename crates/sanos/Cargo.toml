@@ -2,10 +2,13 @@
 name = "sanos"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.74"
 license = "MIT"
 description = "SANOS: Smooth strictly Arbitrage-free Non-parametric Option Surfaces (Rust implementation)"
 repository = "https://github.com/djikeh/sanos"
-readme = "../../README.md"
+documentation = "https://docs.rs/sanos"
+homepage = "https://github.com/djikeh/sanos"
+readme = "README.md"
 keywords = ["options", "volatility", "arbitrage", "calibration", "quant"]
 categories = ["science", "mathematics"]
 

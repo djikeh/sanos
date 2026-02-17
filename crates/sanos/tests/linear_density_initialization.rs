@@ -1,4 +1,6 @@
-use sanos::backbone::bs::bs_call_forward_norm;
+#![cfg(feature = "lp-microlp")]
+
+use sanos::backbone::bs_call_forward_norm;
 use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
 use sanos::calibration::{calibrate_with_stats, CalibrationConfig, ConvexOrderValidationMode};
 use sanos::fit::{FitConfig, LpSolverConfig};

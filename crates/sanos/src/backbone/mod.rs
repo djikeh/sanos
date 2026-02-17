@@ -1,7 +1,7 @@
 // src/backbone/mod.rs
-pub mod bs;
-pub mod lognormal_tc;
-pub mod y_model;
+pub(crate) mod bs;
+pub(crate) mod lognormal_tc;
+pub(crate) mod y_model;
 mod config;
 mod builder;
 mod factory;

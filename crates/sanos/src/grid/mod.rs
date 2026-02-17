@@ -1,7 +1,7 @@
-pub mod config;
-pub mod factory;
-pub mod policy;
-pub mod strike_grid;
+mod config;
+mod factory;
+mod policy;
+mod strike_grid;
 
 pub use config::{
     AtmRefineConfig, GridSizeConfig, LogMoneynessQuantilesGridConfig, MarketAnchoredGridConfig,

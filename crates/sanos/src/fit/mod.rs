@@ -1,8 +1,8 @@
-pub mod config;
-pub mod kernels;
-pub mod kernel_builder;
+mod config;
+mod kernel_builder;
+mod kernels;
 
-pub mod lp;
+pub(crate) mod lp;
 mod solver;
 mod extract;
 mod initialization;

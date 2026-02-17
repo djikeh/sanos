@@ -1,18 +1,18 @@
 // src/interp/atm_variance.rs
-use crate::backbone::bs::{bs_call_forward_norm, bs_implied_atm_var_from_call};
+use crate::backbone::{bs_call_forward_norm, bs_implied_atm_var_from_call};
 use crate::error::{SanosError, SanosResult};
 
 use super::time_interpolator::{bracket_maturity, TimeInterpolator};
 
-/// Interpolation in implied Black–Scholes ATM variance as per Remark 2.13. :contentReference[oaicite:2]{index=2}
+/// Interpolation in implied Black-Scholes ATM variance (Remark 2.13 style).
 ///
 /// Inputs:
-/// - `maturities`: strictly increasing grid T_0 < ... < T_{M-1}
-/// - `atm_calls`: ATM call prices C_j(1) at node maturities (same length)
+/// - `maturities`: strictly increasing grid `T_0 < ... < T_{M-1}`
+/// - `atm_calls`: ATM call prices `C_j(1)` at node maturities (same length)
 ///
-/// For T in [T_j, T_{j+1}]:
-///  - W(T) linearly interpolated between W_j and W_{j+1}
-///  - alpha_j(T) = (Call(1,1,W(T)) - C_j(1)) / (C_{j+1}(1) - C_j(1))
+/// For `T in [T_j, T_{j+1}]`:
+/// - `W(T)` linearly interpolated between `W_j` and `W_{j+1}`
+/// - `alpha_j(T) = (Call(1,1,W(T)) - C_j(1)) / (C_{j+1}(1) - C_j(1))`
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AtmVarianceTime;
 
@@ -40,11 +40,11 @@ impl TimeInterpolator for AtmVarianceTime {
             return Ok((j, 1.0));
         }
 
-        // Convert node ATM calls to node ATM variances
+        // Convert node ATM calls to node ATM variances.
         let w0 = bs_implied_atm_var_from_call(c0)?;
         let w1 = bs_implied_atm_var_from_call(c1)?;
 
-        // Linear interpolation in time for total variance W(T)
+        // Linear interpolation in time for total variance W(T).
         let w_t = if (t1 - t0).abs() <= 1e-16 {
             0.5 * (w0 + w1)
         } else {
@@ -55,13 +55,13 @@ impl TimeInterpolator for AtmVarianceTime {
 
         let denom = c1 - c0;
         if denom.abs() <= 1e-16 {
-            // If ATM calls equal, any alpha works; choose 0 for stability
+            // If ATM calls are equal, any alpha works; choose 0 for stability.
             return Ok((j, 0.0));
         }
 
         let mut a = (c_t - c0) / denom;
 
-        // Safety clamp to [0,1] (numerical noise)
+        // Safety clamp to [0,1] for numerical noise.
         if !a.is_finite() {
             a = 0.0;
         }

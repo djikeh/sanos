@@ -4,8 +4,8 @@ use crate::error::{SanosError, SanosResult};
 
 /// Time interpolation policy for SANOS:
 /// returns (j, alpha) such that
-///   maturities[j] <= T <= maturities[j+1]
-///   alpha in [0,1]
+///   `maturities[j] <= T <= maturities[j+1]`
+///   `alpha in [0,1]`
 pub trait TimeInterpolator: Send + Sync + Debug {
     fn alpha(
         &self,

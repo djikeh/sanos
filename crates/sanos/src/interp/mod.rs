@@ -1,6 +1,6 @@
 // src/interp/mod.rs
-pub mod linear;
-pub mod time_interpolator;
+mod linear;
+mod time_interpolator;
 mod atm_variance;
 mod config;
 

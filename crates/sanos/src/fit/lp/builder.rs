@@ -499,6 +499,7 @@ mod tests {
 
     use crate::backbone::bs::bs_call_forward_norm;
     use crate::backbone::{TimeChangedLognormal, YModel};
+    #[cfg(feature = "lp-microlp")]
     use crate::fit::config::{LpConfig, ObjectiveConfig, OmegaConfig};
     use crate::fit::kernel_builder::build_kernels;
     use crate::grid::StrikeGrid;
@@ -556,6 +557,7 @@ mod tests {
         assert!((r_11 - wrong_current).abs() > 1e-6);
     }
 
+    #[cfg(feature = "lp-microlp")]
     #[test]
     fn lp_builder_adds_time_constraints_when_enabled() {
         let (book, grids, y) = sample_book_and_grids();
@@ -566,7 +568,7 @@ mod tests {
         };
         let kernels = build_kernels(&book, &grids, &y_dyn, &fit.kernel).unwrap();
 
-        let builder = SanosLpBuilder::default();
+        let builder = SanosLpBuilder;
         let built = builder.build(&book, &kernels, &fit).unwrap();
 
         let expected: usize = kernels.transitions.iter().map(|tr| tr.u.nrows).sum();
@@ -580,6 +582,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    #[cfg(feature = "lp-microlp")]
     #[test]
     fn lp_builder_skips_time_constraints_when_disabled() {
         let (book, grids, y) = sample_book_and_grids();
@@ -594,7 +597,7 @@ mod tests {
         };
 
         let kernels = build_kernels(&book, &grids, &y_dyn, &fit.kernel).unwrap();
-        let built = SanosLpBuilder::default()
+        let built = SanosLpBuilder
             .build(&book, &kernels, &fit)
             .unwrap();
 
@@ -607,6 +610,7 @@ mod tests {
         assert_eq!(actual, 0);
     }
 
+    #[cfg(feature = "lp-microlp")]
     #[test]
     fn lp_builder_adds_both_time_constraint_blocks_for_omega_both() {
         let (book, grids, y) = sample_book_and_grids();
@@ -624,7 +628,8 @@ mod tests {
             .iter()
             .all(|tr| tr.u_alt.is_some() && tr.r_alt.is_some()));
 
-        let built = SanosLpBuilder::default().build(&book, &kernels, &fit).unwrap();
+        let builder = SanosLpBuilder;
+        let built = builder.build(&book, &kernels, &fit).unwrap();
         let expected: usize = kernels.transitions.iter().map(|tr| tr.u.nrows * 2).sum();
         let actual = built
             .model
@@ -636,6 +641,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
+    #[cfg(feature = "lp-microlp")]
     #[test]
     fn hinge_bid_ask_objective_builds() {
         let (book, grids, y) = sample_book_and_grids();
@@ -649,12 +655,13 @@ mod tests {
         };
         let kernels = build_kernels(&book, &grids, &y_dyn, &fit.kernel).unwrap();
 
-        let built = SanosLpBuilder::default()
+        let built = SanosLpBuilder
             .build(&book, &kernels, &fit)
             .unwrap();
         assert!(!built.model.objective.terms.is_empty());
     }
 
+    #[cfg(feature = "lp-microlp")]
     #[test]
     fn hinge_objective_uses_inverse_spread_weights() {
         let t = 0.5;
@@ -675,7 +682,8 @@ mod tests {
             ..FitConfig::default()
         };
         let kernels = build_kernels(&book, &grids, &y, &fit.kernel).unwrap();
-        let built = SanosLpBuilder::default().build(&book, &kernels, &fit).unwrap();
+        let builder = SanosLpBuilder;
+        let built = builder.build(&book, &kernels, &fit).unwrap();
 
         let coef = |var_name: &str| -> f64 {
             let vid = built

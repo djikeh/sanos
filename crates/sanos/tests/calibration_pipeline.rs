@@ -1,14 +1,27 @@
-use sanos::backbone::bs::{bs_call_forward_norm, bs_implied_atm_var_from_call};
-use sanos::backbone::{build_backbone, BackboneConfig, BsTimeChangedConfig};
-use sanos::calibration::{calibrate, CalibrationConfig, ConvexOrderValidationMode};
+use sanos::backbone::bs_call_forward_norm;
+#[cfg(feature = "lp-microlp")]
+use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
+#[cfg(feature = "lp-microlp")]
+use sanos::backbone::{bs_implied_atm_var_from_call, build_backbone};
+#[cfg(feature = "lp-microlp")]
+use sanos::calibration::calibrate;
+#[cfg(feature = "lp-microlp")]
+use sanos::calibration::{CalibrationConfig, ConvexOrderValidationMode};
+#[cfg(feature = "lp-microlp")]
 use sanos::density::DensityTolerances;
+#[cfg(feature = "lp-microlp")]
 use sanos::fit::{
     build_kernels, extract_density, solve_lp, FitConfig, LpBuilder, LpSolverConfig,
     ObjectiveConfig, SanosLpBuilder,
 };
-use sanos::grid::{build_strike_grids, StrikeGridPolicyConfig};
+#[cfg(feature = "lp-microlp")]
+use sanos::grid::StrikeGridPolicyConfig;
+#[cfg(feature = "lp-microlp")]
+use sanos::grid::build_strike_grids;
+#[cfg(feature = "lp-microlp")]
 use sanos::interp::TimeInterpConfig;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
+#[cfg(feature = "lp-microlp")]
 use sanos::surface::SanosSurface;
 
 use serde::Deserialize;
@@ -55,6 +68,7 @@ fn load_book_from_snapshot() -> OptionBook {
     OptionBook::new(chains).expect("book must validate")
 }
 
+#[cfg(feature = "lp-microlp")]
 fn snapshot_calibration_config() -> CalibrationConfig {
     let backbone = BackboneConfig::BsTimeChanged(BsTimeChangedConfig {
         eta: 0.25,
@@ -86,6 +100,7 @@ fn snapshot_fixture_is_realistic_option_book() {
     }
 }
 
+#[cfg(feature = "lp-microlp")]
 #[test]
 fn calibrate_pipeline_step_by_step_from_real_book() {
     let book = load_book_from_snapshot();
@@ -157,7 +172,7 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
     }
 
     // Step 4: LP build
-    let lp_builder = SanosLpBuilder::default();
+    let lp_builder = SanosLpBuilder;
     let built_lp = lp_builder
         .build(&book, &kernels, &cfg.fit)
         .expect("LP build must succeed");

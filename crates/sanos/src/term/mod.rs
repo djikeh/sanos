@@ -1,3 +1,3 @@
-pub mod curve;
+mod curve;
 
 pub use curve::PiecewiseLinearCurve;
