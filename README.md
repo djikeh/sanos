@@ -109,17 +109,20 @@ Optional flags:
 
 - `convex_order_validation`: `"Error"` (default) or `"Warn"`.
 - `fit.kernel.omega`: `"Zero"`, `"One"`, or `"Both"` (`"Both"` enforces both constraint blocks in the same LP).
-- `fit.initialization.fallback_bs_non_decreasing_variance`: `true` by default; if market-based initialization fails, it falls back to BS-generated calls using a non-decreasing total-variance curve.
+- `fit.initialization.mode`: `"None"` (default) or `"BackboneSynthetic"`.
+- `fit.initialization.feasibility_tol`: non-negative finite tolerance for warm-start feasibility checks.
 
 Minimal example:
 ```json
 {
   "convex_order_validation": "Warn",
   "fit": {
-    "kernel": { "omega": "Both" },
+    "kernel": { "omega": "One" },
+    "objective": "HardBidAsk",
     "initialization": {
-      "enabled": true,
-      "fallback_bs_non_decreasing_variance": true
+      "mode": "None",
+      "price_proxy": "Mid",
+      "feasibility_tol": 1e-8
     }
   }
 }
