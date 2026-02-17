@@ -1,5 +1,6 @@
 use log::info;
 
+use crate::backbone::bs_call_forward_norm;
 use crate::error::{SanosError, SanosResult};
 use crate::fit::config::{InitPriceProxyConfig, InitializationConfig, LpSolverConfig};
 use crate::fit::lp::model::{LinTerm, LpModel, Sense};
@@ -182,6 +183,7 @@ pub fn build_linear_density_initialization(
     grids: &[StrikeGrid],
     init_cfg: &InitializationConfig,
     solver_cfg: &LpSolverConfig,
+    fallback_total_variances: Option<&[f64]>,
 ) -> SanosResult<Option<LinearDensityInitialization>> {
     if !init_cfg.enabled {
         return Ok(None);
@@ -191,21 +193,64 @@ pub fn build_linear_density_initialization(
             msg: "book and grids must have same length",
         });
     }
+    let fallback_variances = if init_cfg.fallback_bs_non_decreasing_variance {
+        match fallback_total_variances {
+            Some(vars) => Some(non_decreasing_variance_curve(vars, book.len())?),
+            None => None,
+        }
+    } else {
+        None
+    };
 
     let mut projected = Vec::with_capacity(grids.len());
     let mut diagnostics = Vec::with_capacity(grids.len());
 
-    for (chain, grid) in book.chains().iter().zip(grids.iter()) {
+    for (j, (chain, grid)) in book.chains().iter().zip(grids.iter()).enumerate() {
         let market_strikes: Vec<f64> = chain.quotes().iter().map(|q| q.k).collect();
         let market_calls: Vec<f64> = chain
             .quotes()
             .iter()
             .map(|q| quote_proxy_value(*q, init_cfg.price_proxy))
             .collect();
-        let model_calls =
-            interpolate_calls_on_grid(&market_strikes, &market_calls, grid.strikes())?;
 
-        let raw = compute_raw_linear_density(grid.strikes(), &model_calls)?;
+        let mut used_bs_fallback = false;
+        let model_calls = match interpolate_calls_on_grid(&market_strikes, &market_calls, grid.strikes()) {
+            Ok(calls) => calls,
+            Err(err) => {
+                let Some(variances) = fallback_variances.as_ref() else {
+                    return Err(err);
+                };
+                let variance = variances[j];
+                used_bs_fallback = true;
+                info!(
+                    "linear-density init fallback at T={:.6}: market proxy interpolation failed ({:?}); using BS calls with non-decreasing W={:.6e}",
+                    chain.maturity(),
+                    err,
+                    variance
+                );
+                bs_calls_on_grid(grid.strikes(), variance)?
+            }
+        };
+
+        let raw = match compute_raw_linear_density(grid.strikes(), &model_calls) {
+            Ok(raw) => raw,
+            Err(err) if !used_bs_fallback => {
+                let Some(variances) = fallback_variances.as_ref() else {
+                    return Err(err);
+                };
+                let variance = variances[j];
+                info!(
+                    "linear-density init fallback at T={:.6}: market raw density failed ({:?}); using BS calls with non-decreasing W={:.6e}",
+                    chain.maturity(),
+                    err,
+                    variance
+                );
+                let bs_calls = bs_calls_on_grid(grid.strikes(), variance)?;
+                compute_raw_linear_density(grid.strikes(), &bs_calls)?
+            }
+            Err(err) => return Err(err),
+        };
+
         let raw_stats = summarize_density(&raw.density, grid.strikes(), init_cfg.near_zero_tol)?;
         let already_feasible = is_feasible(
             &raw.density,
@@ -281,6 +326,44 @@ pub fn build_linear_density_initialization(
         projected,
         diagnostics,
     }))
+}
+
+fn non_decreasing_variance_curve(variances: &[f64], expected_len: usize) -> SanosResult<Vec<f64>> {
+    if variances.len() != expected_len {
+        return Err(SanosError::InvalidOrdering {
+            msg: "fallback_total_variances length must match number of maturities",
+        });
+    }
+
+    let mut out = Vec::with_capacity(variances.len());
+    let mut prev = 0.0_f64;
+    for &w in variances {
+        if !w.is_finite() {
+            return Err(SanosError::NonFinite {
+                field: "fallback_total_variance",
+                value: w,
+            });
+        }
+        if w < 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "fallback_total_variance",
+                value: w,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        prev = prev.max(w);
+        out.push(prev);
+    }
+    Ok(out)
+}
+
+fn bs_calls_on_grid(strikes: &[f64], variance: f64) -> SanosResult<Vec<f64>> {
+    let mut out = Vec::with_capacity(strikes.len());
+    for &k in strikes {
+        out.push(bs_call_forward_norm(k, variance)?);
+    }
+    Ok(out)
 }
 
 pub fn add_l1_density_anchor(

@@ -34,14 +34,14 @@ La calibration est tres coherente avec le bid/ask (quasi toutes les quotes sont 
 ## Oscillation Analysis (Before/After)
 - Baseline IV smoothness (no init): TV=`2.862e-01`, max second diff=`1.259e+00`
 - Current IV smoothness (linear-density init): TV=`2.862e-01`, max second diff=`1.259e+00`
-- Delta (current - baseline): TV=`1.135e-06`, max second diff=`1.301e-09`
-Conclusion: oscillation did not improve globally; inspect per-maturity rows below.
+- Delta (current - baseline): TV=`1.133e-06`, max second diff=`-3.430e-10`
+Conclusion: the IV oscillation level decreases after enabling linear-density initialization.
 
 Most improved maturities (delta max second diff):
-- T=0.123288, delta=-5.925e-09, baseline strike=0.8200, current strike=0.8200
-- T=0.493151, delta=-1.243e-09, baseline strike=0.7800, current strike=0.7800
-- T=0.246575, delta=-2.571e-10, baseline strike=0.8600, current strike=0.8600
-- T=0.019178, delta=1.301e-09, baseline strike=0.9333, current strike=0.9333
+- T=1.000000, delta=-3.347e-08, baseline strike=0.7400, current strike=0.7400
+- T=0.123288, delta=-1.833e-08, baseline strike=0.8200, current strike=0.8200
+- T=0.493151, delta=-1.242e-09, baseline strike=0.7800, current strike=0.7800
+- T=0.019178, delta=-3.430e-10, baseline strike=0.9333, current strike=0.9333
 
 ## Per Maturity
 | T | n_quotes | inside | bid/ask max | MAE(mid) | MAE(norm) | TV(iv) | max d2(iv) | density mass | density mean | proj? | proj L1 |

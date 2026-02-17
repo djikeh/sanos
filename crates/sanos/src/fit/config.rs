@@ -5,19 +5,21 @@ use crate::error::{SanosError, SanosResult};
 pub enum OmegaConfig {
     Zero,
     One,
+    Both,
 }
 
 impl Default for OmegaConfig {
     fn default() -> Self {
-        OmegaConfig::One // recommandé
+        OmegaConfig::One
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct KernelConfig {
-    /// ω = 0 => linear_call
-    /// ω = 1 => call
+    /// `omega = Zero` => `linear_call` constraints.
+    /// `omega = One` => `call` constraints.
+    /// `omega = Both` => enforce both blocks in the same LP.
     pub omega: OmegaConfig,
 }
 
@@ -149,6 +151,10 @@ pub struct InitializationConfig {
     pub near_zero_tol: f64,
     /// L1 anchor strength: adds sum_i |q_i - p*_i| to the LP objective.
     pub anchor_l1_weight: f64,
+    /// Fallback to BS-generated calls with non-decreasing variance when
+    /// market-based initialization cannot be built.
+    #[cfg_attr(feature = "serde", serde(default = "default_true"))]
+    pub fallback_bs_non_decreasing_variance: bool,
 }
 
 impl Default for InitializationConfig {
@@ -160,8 +166,14 @@ impl Default for InitializationConfig {
             projection_tol: 1e-10,
             near_zero_tol: 1e-10,
             anchor_l1_weight: 1e-3,
+            fallback_bs_non_decreasing_variance: true,
         }
     }
+}
+
+#[inline]
+const fn default_true() -> bool {
+    true
 }
 
 impl InitializationConfig {

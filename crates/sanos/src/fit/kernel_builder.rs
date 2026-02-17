@@ -8,10 +8,60 @@ use crate::fit::kernels::{DenseMat, KernelC, KernelSet, KernelTransition};
 use crate::grid::StrikeGrid;
 use crate::market::OptionBook;
 
-fn call_for_constraints(y: &Arc<dyn YModel>, omega: OmegaConfig, t: f64, a: f64, b: f64) -> SanosResult<f64> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConstraintKernelKind {
+    Zero,
+    One,
+}
+
+fn call_for_constraints(
+    y: &Arc<dyn YModel>,
+    kind: ConstraintKernelKind,
+    t: f64,
+    a: f64,
+    b: f64,
+) -> SanosResult<f64> {
+    match kind {
+        ConstraintKernelKind::Zero => y.linear_call(t, a, b),
+        ConstraintKernelKind::One => y.call(t, a, b),
+    }
+}
+
+fn build_transition_mats(
+    y: &Arc<dyn YModel>,
+    kind: ConstraintKernelKind,
+    maturity: f64,
+    prev_maturity: f64,
+    strikes: &[f64],
+    prev_strikes: &[f64],
+) -> SanosResult<(DenseMat, DenseMat)> {
+    let nj = strikes.len();
+    let njm1 = prev_strikes.len();
+
+    let mut u_data = Vec::with_capacity(nj * nj);
+    for &a in strikes {
+        for &b in strikes {
+            u_data.push(call_for_constraints(y, kind, maturity, a, b)?);
+        }
+    }
+    let u = DenseMat::new(nj, nj, u_data)?;
+
+    let mut r_data = Vec::with_capacity(nj * njm1);
+    for &a in strikes {
+        for &b in prev_strikes {
+            r_data.push(call_for_constraints(y, kind, prev_maturity, a, b)?);
+        }
+    }
+    let r = DenseMat::new(nj, njm1, r_data)?;
+
+    Ok((u, r))
+}
+
+fn primary_and_secondary_kinds(omega: OmegaConfig) -> (ConstraintKernelKind, Option<ConstraintKernelKind>) {
     match omega {
-        OmegaConfig::Zero => y.linear_call(t, a, b),
-        OmegaConfig::One => y.call(t, a, b),
+        OmegaConfig::Zero => (ConstraintKernelKind::Zero, None),
+        OmegaConfig::One => (ConstraintKernelKind::One, None),
+        OmegaConfig::Both => (ConstraintKernelKind::One, Some(ConstraintKernelKind::Zero)),
     }
 }
 
@@ -31,7 +81,7 @@ pub fn build_kernels(
         return Err(SanosError::InvalidOrdering { msg: "grids.len() must match book.len()" });
     }
 
-    let omega = cfg.omega;
+    let (primary_kind, secondary_kind) = primary_and_secondary_kinds(cfg.omega);
 
     let mut c_out = Vec::with_capacity(book.len());
     let mut t_out = Vec::with_capacity(book.len().saturating_sub(1));
@@ -74,28 +124,36 @@ pub fn build_kernels(
             let prev_strikes = prev_grid.strikes();
             let prev_maturity = prev_grid.maturity();
 
-            let nj = n_mod;
-            let njm1 = prev_strikes.len();
-
-            // U: Nj x Nj
-            let mut u_data = Vec::with_capacity(nj * nj);
-            for &a in grid.strikes() {
-                for &b in grid.strikes() {
-                    u_data.push(call_for_constraints(y, omega, maturity, a, b)?);
+            let (u, r) = build_transition_mats(
+                y,
+                primary_kind,
+                maturity,
+                prev_maturity,
+                grid.strikes(),
+                prev_strikes,
+            )?;
+            let (u_alt, r_alt) = match secondary_kind {
+                Some(kind) => {
+                    let (u2, r2) = build_transition_mats(
+                        y,
+                        kind,
+                        maturity,
+                        prev_maturity,
+                        grid.strikes(),
+                        prev_strikes,
+                    )?;
+                    (Some(u2), Some(r2))
                 }
-            }
-            let u = DenseMat::new(nj, nj, u_data)?;
+                None => (None, None),
+            };
 
-            // R: Nj x N(j-1), evaluated at previous maturity T_{j-1}
-            let mut r_data = Vec::with_capacity(nj * njm1);
-            for &a in grid.strikes() {
-                for &b in prev_strikes {
-                    r_data.push(call_for_constraints(y, omega, prev_maturity, a, b)?);
-                }
-            }
-            let r = DenseMat::new(nj, njm1, r_data)?;
-
-            t_out.push(KernelTransition { maturity, u, r });
+            t_out.push(KernelTransition {
+                maturity,
+                u,
+                r,
+                u_alt,
+                r_alt,
+            });
         }
     }
 

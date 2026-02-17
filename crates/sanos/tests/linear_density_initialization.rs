@@ -1,6 +1,6 @@
 use sanos::backbone::bs::bs_call_forward_norm;
 use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
-use sanos::calibration::{calibrate_with_stats, CalibrationConfig};
+use sanos::calibration::{calibrate_with_stats, CalibrationConfig, ConvexOrderValidationMode};
 use sanos::fit::{FitConfig, LpSolverConfig};
 use sanos::grid::StrikeGridPolicyConfig;
 use sanos::interp::TimeInterpConfig;
@@ -44,6 +44,7 @@ fn calibration_runs_with_linear_density_initialization_path() {
         grid: StrikeGridPolicyConfig::default(),
         fit,
         time_interp: TimeInterpConfig::AtmVarianceTime,
+        convex_order_validation: ConvexOrderValidationMode::Error,
     };
 
     let run =

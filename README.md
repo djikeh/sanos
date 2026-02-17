@@ -103,4 +103,24 @@ Optional flags:
 - `--n-strikes`
 - `--selection-policy`
 - `--score-w-*` (weights for the best-score objective)
-- `--keep-attempt-artifacts` (désactive le nettoyage des essais non retenus)
+- `--keep-attempt-artifacts` (desactive le nettoyage des essais non retenus)
+
+## Calibration Config Notes
+
+- `convex_order_validation`: `"Error"` (default) or `"Warn"`.
+- `fit.kernel.omega`: `"Zero"`, `"One"`, or `"Both"` (`"Both"` enforces both constraint blocks in the same LP).
+- `fit.initialization.fallback_bs_non_decreasing_variance`: `true` by default; if market-based initialization fails, it falls back to BS-generated calls using a non-decreasing total-variance curve.
+
+Minimal example:
+```json
+{
+  "convex_order_validation": "Warn",
+  "fit": {
+    "kernel": { "omega": "Both" },
+    "initialization": {
+      "enabled": true,
+      "fallback_bs_non_decreasing_variance": true
+    }
+  }
+}
+```

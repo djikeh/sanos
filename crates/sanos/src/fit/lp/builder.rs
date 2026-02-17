@@ -50,6 +50,7 @@ impl SanosLpBuilder {
 
         // For each j >= 1, enforce component-wise:
         //   U_j q_j - R_j q_{j-1} >= 0
+        // and optionally a second block for omega=Both.
         for (idx, tr) in kernels.transitions.iter().enumerate() {
             let j = idx + 1;
             let q_prev = &q_var_ids[j - 1];
@@ -66,26 +67,66 @@ impl SanosLpBuilder {
                 });
             }
 
-            for row in 0..q_cur.len() {
-                let mut terms: Vec<LinTerm> = Vec::with_capacity(q_cur.len() + q_prev.len());
+            self.add_one_time_block(lp, j, "time", &tr.u, &tr.r, q_cur, q_prev)?;
 
-                for (col, &vid) in q_cur.iter().enumerate() {
-                    let coef = tr.u.get(row, col);
-                    if coef != 0.0 {
-                        terms.push(LinTerm { var: vid, coef });
-                    }
+            if let (Some(u_alt), Some(r_alt)) = (&tr.u_alt, &tr.r_alt) {
+                if u_alt.nrows != q_cur.len() || u_alt.ncols != q_cur.len() {
+                    return Err(SanosError::InvalidOrdering {
+                        msg: "U_alt dimensions must be Nj x Nj",
+                    });
                 }
-                for (col, &vid) in q_prev.iter().enumerate() {
-                    let coef = tr.r.get(row, col);
-                    if coef != 0.0 {
-                        terms.push(LinTerm { var: vid, coef: -coef });
-                    }
+                if r_alt.nrows != q_cur.len() || r_alt.ncols != q_prev.len() {
+                    return Err(SanosError::InvalidOrdering {
+                        msg: "R_alt dimensions must be Nj x N(j-1)",
+                    });
                 }
-
-                lp.add_constraint(format!("time_{}_{}", j, row), terms, Sense::Ge, 0.0)?;
+                self.add_one_time_block(lp, j, "time_alt", u_alt, r_alt, q_cur, q_prev)?;
+            } else if tr.u_alt.is_some() || tr.r_alt.is_some() {
+                return Err(SanosError::InvalidOrdering {
+                    msg: "u_alt and r_alt must both be present or both absent",
+                });
             }
         }
 
+        Ok(())
+    }
+
+    fn add_one_time_block(
+        &self,
+        lp: &mut LpModel,
+        j: usize,
+        name_prefix: &str,
+        u: &crate::fit::kernels::DenseMat,
+        r: &crate::fit::kernels::DenseMat,
+        q_cur: &[usize],
+        q_prev: &[usize],
+    ) -> SanosResult<()> {
+        for row in 0..q_cur.len() {
+            let mut terms: Vec<LinTerm> = Vec::with_capacity(q_cur.len() + q_prev.len());
+
+            for (col, &vid) in q_cur.iter().enumerate() {
+                let coef = u.get(row, col);
+                if coef != 0.0 {
+                    terms.push(LinTerm { var: vid, coef });
+                }
+            }
+            for (col, &vid) in q_prev.iter().enumerate() {
+                let coef = r.get(row, col);
+                if coef != 0.0 {
+                    terms.push(LinTerm {
+                        var: vid,
+                        coef: -coef,
+                    });
+                }
+            }
+
+            lp.add_constraint(
+                format!("{}_{}_{}", name_prefix, j, row),
+                terms,
+                Sense::Ge,
+                0.0,
+            )?;
+        }
         Ok(())
     }
 
@@ -458,7 +499,7 @@ mod tests {
 
     use crate::backbone::bs::bs_call_forward_norm;
     use crate::backbone::{TimeChangedLognormal, YModel};
-    use crate::fit::config::{LpConfig, ObjectiveConfig};
+    use crate::fit::config::{LpConfig, ObjectiveConfig, OmegaConfig};
     use crate::fit::kernel_builder::build_kernels;
     use crate::grid::StrikeGrid;
     use crate::market::{CallQuote, OptionBook, OptionChain};
@@ -564,6 +605,35 @@ mod tests {
             .filter(|c| c.name.starts_with("time_"))
             .count();
         assert_eq!(actual, 0);
+    }
+
+    #[test]
+    fn lp_builder_adds_both_time_constraint_blocks_for_omega_both() {
+        let (book, grids, y) = sample_book_and_grids();
+        let y_dyn = y as Arc<dyn YModel>;
+
+        let mut fit = FitConfig {
+            objective: ObjectiveConfig::HardBidAsk,
+            ..FitConfig::default()
+        };
+        fit.kernel.omega = OmegaConfig::Both;
+
+        let kernels = build_kernels(&book, &grids, &y_dyn, &fit.kernel).unwrap();
+        assert!(kernels
+            .transitions
+            .iter()
+            .all(|tr| tr.u_alt.is_some() && tr.r_alt.is_some()));
+
+        let built = SanosLpBuilder::default().build(&book, &kernels, &fit).unwrap();
+        let expected: usize = kernels.transitions.iter().map(|tr| tr.u.nrows * 2).sum();
+        let actual = built
+            .model
+            .constraints
+            .iter()
+            .filter(|c| c.name.starts_with("time_"))
+            .count();
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

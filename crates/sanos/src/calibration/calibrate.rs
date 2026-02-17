@@ -11,7 +11,7 @@ use crate::market::OptionBook;
 use crate::surface::SanosSurface;
 use log::warn;
 
-use super::config::CalibrationConfig;
+use super::config::{CalibrationConfig, ConvexOrderValidationMode};
 
 #[derive(Debug, Clone)]
 pub struct CalibrationRunStats {
@@ -58,6 +58,7 @@ pub fn calibrate_with_stats(
         &grids,
         &cfg.fit.initialization,
         &cfg.fit.solver,
+        Some(&total_variances),
     )?;
     if let Some(init) = initialization.as_ref() {
         add_l1_density_anchor(
@@ -76,11 +77,17 @@ pub fn calibrate_with_stats(
     let q = extract_density(&built_lp.layout, &sol, &grids)?;
     let tol = DensityTolerances::from_tol(1e-6)?;
     q.validate_marginals(tol)?;
-    if let Err(err) = q.validate_convex_order(tol) {
-        warn!(
-            "convex-order validation warning after calibration: {:?}",
-            err
-        );
+    match q.validate_convex_order(tol) {
+        Ok(()) => {}
+        Err(err) => match cfg.convex_order_validation {
+            ConvexOrderValidationMode::Error => return Err(err),
+            ConvexOrderValidationMode::Warn => {
+                warn!(
+                    "convex-order validation warning after calibration: {:?}",
+                    err
+                );
+            }
+        },
     }
 
     // 8) Time interpolator

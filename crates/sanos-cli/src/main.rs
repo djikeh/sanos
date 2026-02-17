@@ -8,7 +8,9 @@ use sanos::backbone::{
     bs_implied_vol_from_call, build_time_changed_lognormal_from_book, BackboneConfig,
     BsTimeChangedConfig,
 };
-use sanos::calibration::{calibrate_with_stats, CalibrationConfig, CalibrationRunStats};
+use sanos::calibration::{
+    calibrate_with_stats, CalibrationConfig, CalibrationRunStats, ConvexOrderValidationMode,
+};
 use sanos::density::DensityTolerances;
 use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig};
 use sanos::grid::StrikeGridPolicyConfig;
@@ -325,7 +327,14 @@ fn main() -> Result<()> {
                 .validate_marginals(tol)
                 .map_err(|e| anyhow::anyhow!("marginal validation failed: {e:?}"))?;
             if let Err(e) = surface.martingale_density().validate_convex_order(tol) {
-                warn!("convex-order validation warning: {:?}", e);
+                match cfg.convex_order_validation {
+                    ConvexOrderValidationMode::Error => {
+                        return Err(anyhow::anyhow!("convex-order validation failed: {e:?}"));
+                    }
+                    ConvexOrderValidationMode::Warn => {
+                        warn!("convex-order validation warning: {:?}", e);
+                    }
+                }
             }
 
             info!("calibration OK");
@@ -387,6 +396,7 @@ fn default_calibration_config() -> CalibrationConfig {
         grid: StrikeGridPolicyConfig::default(),
         fit,
         time_interp: TimeInterpConfig::default(),
+        convex_order_validation: ConvexOrderValidationMode::Error,
     }
 }
 

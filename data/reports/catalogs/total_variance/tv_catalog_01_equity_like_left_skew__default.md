@@ -34,21 +34,21 @@ La calibration est tres coherente avec le bid/ask (quasi toutes les quotes sont 
 ## Oscillation Analysis (Before/After)
 - Baseline IV smoothness (no init): TV=`7.702e-01`, max second diff=`1.359e+00`
 - Current IV smoothness (linear-density init): TV=`7.702e-01`, max second diff=`1.359e+00`
-- Delta (current - baseline): TV=`3.291e-06`, max second diff=`5.108e-11`
+- Delta (current - baseline): TV=`1.266e-05`, max second diff=`1.075e-09`
 Conclusion: oscillation did not improve globally; inspect per-maturity rows below.
 
 Most improved maturities (delta max second diff):
-- T=0.019178, delta=5.108e-11, baseline strike=0.9382, current strike=0.9382
+- T=0.019178, delta=1.075e-09, baseline strike=0.9382, current strike=0.9382
 - T=1.000000, delta=1.135e-04, baseline strike=0.9588, current strike=0.9588
-- T=0.246575, delta=1.662e-04, baseline strike=0.9382, current strike=0.9382
-- T=0.493151, delta=2.013e-04, baseline strike=0.9382, current strike=0.9382
+- T=0.246575, delta=1.663e-04, baseline strike=0.9382, current strike=0.9382
+- T=0.493151, delta=2.012e-04, baseline strike=0.9382, current strike=0.9382
 
 ## Per Maturity
 | T | n_quotes | inside | bid/ask max | MAE(mid) | MAE(norm) | TV(iv) | max d2(iv) | density mass | density mean | proj? | proj L1 |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 0.019178 | 35 | 100.00% | 0.000e+00 | 7.425e-11 | 0.000 | 2.007e-01 | 1.359e+00 | 1.000000 | 1.000000 | no | 0.000e+00 |
+| 0.019178 | 35 | 100.00% | 0.000e+00 | 7.427e-11 | 0.000 | 2.007e-01 | 1.359e+00 | 1.000000 | 1.000000 | no | 0.000e+00 |
 | 0.082192 | 35 | 100.00% | 0.000e+00 | 2.324e-09 | 0.000 | 1.637e-01 | 1.105e+00 | 1.000000 | 1.000000 | no | 0.000e+00 |
-| 0.246575 | 35 | 100.00% | 0.000e+00 | 1.391e-08 | 0.000 | 1.451e-01 | 9.779e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
+| 0.246575 | 35 | 100.00% | 0.000e+00 | 1.390e-08 | 0.000 | 1.451e-01 | 9.779e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
 | 0.493151 | 35 | 100.00% | 0.000e+00 | 4.463e-08 | 0.000 | 1.355e-01 | 9.120e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
 | 1.000000 | 35 | 100.00% | 0.000e+00 | 1.590e-05 | 0.008 | 1.252e-01 | 8.413e-01 | 1.000000 | 1.000000 | no | 0.000e+00 |
 

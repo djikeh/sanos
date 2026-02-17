@@ -1,0 +1,49 @@
+{
+  "snapshot": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\snapshots\\catalogs\\total_variance\\tv_catalog_03_rates_like_low_skew.snapshot.json",
+  "config": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\configs\\default.json",
+  "n_maturities": 7,
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "n_atoms": 29,
+      "mass": 0.9999999999999987,
+      "mean": 0.9999999999999988
+    },
+    {
+      "maturity": 0.038356164383561646,
+      "n_atoms": 29,
+      "mass": 1.000000000000022,
+      "mean": 1.0000000000000253
+    },
+    {
+      "maturity": 0.0821917808219178,
+      "n_atoms": 29,
+      "mass": 0.9999999999401697,
+      "mean": 0.9999999999486551
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "n_atoms": 29,
+      "mass": 0.999999999980547,
+      "mean": 0.9999999999810314
+    },
+    {
+      "maturity": 0.4931506849315068,
+      "n_atoms": 29,
+      "mass": 1.0000000000218203,
+      "mean": 1.0000000000228082
+    },
+    {
+      "maturity": 1.0,
+      "n_atoms": 29,
+      "mass": 0.9999999999992838,
+      "mean": 0.9999999999993081
+    },
+    {
+      "maturity": 2.0,
+      "n_atoms": 29,
+      "mass": 0.9999999999998351,
+      "mean": 0.9999999999998442
+    }
+  ]
+}

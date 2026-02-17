@@ -326,8 +326,8 @@ pub fn surface_snapshot_v1_to_sanos_surface(snap: &SurfaceSnapshotV1) -> Result<
         .context("invalid reconstruction.backbone.var_curve_knots")?;
     let y = Arc::new(TimeChangedLognormal::new(var_curve, backbone.eta));
 
-    let tol = DensityTolerances::from_tol(1e-6)
-        .context("failed to create default density tolerances")?;
+    let tol =
+        DensityTolerances::from_tol(1e-6).context("failed to create default density tolerances")?;
     let marginals: Vec<MarginalDensity> = snap
         .reconstruction
         .marginals
@@ -354,7 +354,7 @@ mod tests {
     use super::*;
     use sanos::backbone::bs::bs_call_forward_norm;
     use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
-    use sanos::calibration::CalibrationConfig;
+    use sanos::calibration::{CalibrationConfig, ConvexOrderValidationMode};
     use sanos::fit::FitConfig;
     use sanos::grid::{LogMoneynessQuantilesGridConfig, StrikeGridPolicyConfig};
     use sanos::interp::TimeInterpConfig;
@@ -602,6 +602,7 @@ mod tests {
             ),
             fit: FitConfig::default(),
             time_interp: TimeInterpConfig::default(),
+            convex_order_validation: ConvexOrderValidationMode::Error,
         };
         let raw = serde_json::to_string_pretty(&cfg).unwrap();
         let path = write_temp_file("cfg", &raw);

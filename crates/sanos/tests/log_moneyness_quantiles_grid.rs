@@ -1,6 +1,6 @@
 use sanos::backbone::bs::bs_call_forward_norm;
 use sanos::backbone::{build_backbone_with_total_variances, BackboneConfig, BsTimeChangedConfig};
-use sanos::calibration::{calibrate, CalibrationConfig};
+use sanos::calibration::{calibrate, CalibrationConfig, ConvexOrderValidationMode};
 use sanos::fit::{FitConfig, LpSolverConfig};
 use sanos::grid::{
     build_strike_grids_with_variances, LogMoneynessQuantilesGridConfig, StrikeGridPolicyConfig,
@@ -158,6 +158,7 @@ fn calibrate_runs_with_log_moneyness_quantiles_grid_policy() {
             grid: StrikeGridPolicyConfig::LogMoneynessQuantiles(grid_cfg),
             fit: fit.clone(),
             time_interp: TimeInterpConfig::AtmVarianceTime,
+            convex_order_validation: ConvexOrderValidationMode::Error,
         };
 
         match calibrate(&book, &cfg) {

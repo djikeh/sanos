@@ -12,31 +12,31 @@
 
 ## Global Metrics
 - Number of quotes: `287`
-- Objective value: `4.329417e+01`
-- Inside bid/ask ratio: `89.55%`
+- Objective value: `4.329407e+01`
+- Inside bid/ask ratio: `86.76%`
 - Bid/ask violation (max / mean): `1.671e-02` / `7.173e-04`
 - MAE(mid): `1.633e-03`
 - RMSE(mid): `4.659e-03`
-- MAE(residual/half-spread): `0.321`
-- IV total variation: `2.486e+00`
-- IV max second diff: `2.647e+01`
-- MAE(iv): `4.302e-03`
-- RMSE(iv): `1.155e-02`
+- MAE(residual/half-spread): `0.693`
+- IV total variation: `2.433e+00`
+- IV max second diff: `2.612e+01`
+- MAE(iv): `5.048e-03`
+- RMSE(iv): `1.276e-02`
 
 ## No-Arbitrage Diagnostics
 - Strike monotonicity violation (max / mean / count): `0.000e+00` / `0.000e+00` / `0`
 - Strike convexity violation (max / mean / count): `0.000e+00` / `0.000e+00` / `0`
-- Calendar violation (max / mean / count): `0.000e+00` / `0.000e+00` / `0`
+- Calendar violation (max / mean / count): `3.678e-08` / `1.495e-10` / `1`
 
 ### Interpretation automatique
-Le taux inside bid/ask est faible: la calibration merite un reglage des hyperparametres. Les residus normalises sont globalement contenus par rapport au demi-spread. Erreur en prix: MAE=1.633e-03, RMSE=4.659e-03. Erreur en volatilite implicite: MAE=4.302e-03, RMSE=1.155e-02. Rugosite IV (global): TV=2.486e+00, max seconde diff=2.647e+01.
+Le taux inside bid/ask est faible: la calibration merite un reglage des hyperparametres. Les residus normalises restent raisonnables mais sont proches de la largeur des spreads. Erreur en prix: MAE=1.633e-03, RMSE=4.659e-03. Erreur en volatilite implicite: MAE=5.048e-03, RMSE=1.276e-02. Rugosite IV (global): TV=2.433e+00, max seconde diff=2.612e+01.
 
 ## Per Maturity
 | T | n_quotes | inside | bid/ask max | MAE(mid) | MAE(norm) | TV(iv) | max d2(iv) | density mass | density mean | proj? | proj L1 |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 0.019178 | 41 | 97.56% | 2.305e-11 | 1.780e-06 | 0.176 | 4.387e-01 | 2.647e+01 | 1.000000 | 1.000000 | no | 0.000e+00 |
-| 0.027397 | 41 | 100.00% | 0.000e+00 | 7.017e-06 | 0.052 | 4.443e-01 | 6.140e+00 | 1.000000 | 1.000000 | no | 0.000e+00 |
-| 0.038356 | 41 | 100.00% | 0.000e+00 | 5.813e-06 | 0.061 | 4.270e-01 | 6.430e+00 | 1.000000 | 1.000000 | no | 0.000e+00 |
+| 0.019178 | 41 | 90.24% | 3.243e-10 | 1.780e-06 | 1.709 | 3.763e-01 | 8.275e+00 | 1.000000 | 1.000000 | no | 0.000e+00 |
+| 0.027397 | 41 | 92.68% | 9.404e-09 | 7.019e-06 | 0.936 | 5.102e-01 | 1.477e+01 | 1.000000 | 1.000000 | no | 0.000e+00 |
+| 0.038356 | 41 | 95.12% | 3.847e-08 | 5.825e-06 | 0.249 | 3.709e-01 | 2.612e+01 | 1.000000 | 1.000000 | no | 0.000e+00 |
 | 0.246575 | 41 | 100.00% | 0.000e+00 | 6.787e-05 | 0.062 | 3.648e-01 | 2.893e+00 | 1.000000 | 1.000000 | yes | 4.022e-02 |
 | 0.249315 | 41 | 100.00% | 0.000e+00 | 7.491e-05 | 0.066 | 3.668e-01 | 3.641e+00 | 1.000000 | 1.000000 | yes | 3.113e-02 |
 | 1.000000 | 41 | 97.56% | 1.529e-03 | 6.822e-04 | 0.207 | 3.052e-01 | 2.699e+00 | 1.000000 | 1.000000 | yes | 3.557e-01 |

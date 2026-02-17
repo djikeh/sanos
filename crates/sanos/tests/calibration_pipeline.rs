@@ -1,6 +1,6 @@
 use sanos::backbone::bs::{bs_call_forward_norm, bs_implied_atm_var_from_call};
 use sanos::backbone::{build_backbone, BackboneConfig, BsTimeChangedConfig};
-use sanos::calibration::{calibrate, CalibrationConfig};
+use sanos::calibration::{calibrate, CalibrationConfig, ConvexOrderValidationMode};
 use sanos::density::DensityTolerances;
 use sanos::fit::{
     build_kernels, extract_density, solve_lp, FitConfig, LpBuilder, LpSolverConfig,
@@ -70,6 +70,7 @@ fn snapshot_calibration_config() -> CalibrationConfig {
         grid: StrikeGridPolicyConfig::default(),
         fit,
         time_interp: TimeInterpConfig::AtmVarianceTime,
+        convex_order_validation: ConvexOrderValidationMode::Error,
     }
 }
 

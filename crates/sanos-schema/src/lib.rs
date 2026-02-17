@@ -16,6 +16,7 @@ pub use sanos::calibration::CalibrationConfig;
 mod tests {
     use super::CalibrationConfig;
     use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
+    use sanos::calibration::ConvexOrderValidationMode;
     use sanos::fit::FitConfig;
     use sanos::grid::StrikeGridPolicyConfig;
     use sanos::interp::TimeInterpConfig;
@@ -27,6 +28,7 @@ mod tests {
             grid: StrikeGridPolicyConfig::default(),
             fit: FitConfig::default(),
             time_interp: TimeInterpConfig::default(),
+            convex_order_validation: ConvexOrderValidationMode::Error,
         };
         match cfg.backbone {
             BackboneConfig::BsTimeChanged(_) => {}

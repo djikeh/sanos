@@ -47,6 +47,9 @@ pub struct KernelTransition {
     pub maturity: f64,
     pub u: DenseMat, // Nj x Nj
     pub r: DenseMat, // Nj x N(j-1)
+    /// Optional secondary transition block (used for omega=Both).
+    pub u_alt: Option<DenseMat>, // Nj x Nj
+    pub r_alt: Option<DenseMat>, // Nj x N(j-1)
 }
 
 #[derive(Debug, Clone)]
