@@ -41,6 +41,19 @@ When selecting a solver in configuration, the matching crate feature must be ena
 This repository also contains higher-level tooling (`sanos-cli`, `sanos-io`, Python orchestration).
 The `sanos` crate itself is the core Rust calibration engine.
 
+## Research Attribution
+
+This crate is an independent implementation of the SANOS methodology described in:
+
+- *"SANOS: Smooth strictly Arbitrage-free Non-parametric Option Surfaces"* (arXiv:2601.11209)
+- URL: https://arxiv.org/abs/2601.11209
+
+The code in this repository is original Rust code released under MIT (`LICENSE`), and is not a copy of the paper text.
+
+## Non-Affiliation
+
+This project is not affiliated with, endorsed by, or maintained by the authors of the SANOS paper.
+
 ## Pre-publish Checklist
 
 ```bash
