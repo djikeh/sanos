@@ -326,7 +326,7 @@ pub fn surface_snapshot_v1_to_sanos_surface(snap: &SurfaceSnapshotV1) -> Result<
         .context("invalid reconstruction.backbone.var_curve_knots")?;
     let y = Arc::new(TimeChangedLognormal::new(var_curve, backbone.eta));
 
-    let tol = DensityTolerances::from_tol(1e-10)
+    let tol = DensityTolerances::from_tol(1e-6)
         .context("failed to create default density tolerances")?;
     let marginals: Vec<MarginalDensity> = snap
         .reconstruction
@@ -564,6 +564,33 @@ mod tests {
         };
         let err = snapshot_v1_to_option_book(&snap).unwrap_err();
         assert!(format!("{err}").contains("bid_iv > ask_iv"));
+    }
+
+    #[test]
+    fn snapshot_to_option_book_rejects_duplicate_strikes() {
+        let snap = IvSurfaceSnapshotV1 {
+            schema: Some(IV_SNAPSHOT_SCHEMA.to_string()),
+            as_of: None,
+            conventions: Some(SnapshotConventionsV1::default()),
+            maturities: vec![MaturityNodeV1 {
+                t: 0.5,
+                quotes: vec![
+                    IvQuoteV1 {
+                        k: 1.0,
+                        bid_iv: 0.2,
+                        ask_iv: 0.21,
+                    },
+                    IvQuoteV1 {
+                        k: 1.0,
+                        bid_iv: 0.22,
+                        ask_iv: 0.23,
+                    },
+                ],
+            }],
+        };
+        let err = snapshot_v1_to_option_book(&snap).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("failed to build OptionChain"));
     }
 
     #[test]

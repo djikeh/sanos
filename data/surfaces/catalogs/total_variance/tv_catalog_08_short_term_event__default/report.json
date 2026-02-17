@@ -1,0 +1,49 @@
+{
+  "snapshot": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\snapshots\\catalogs\\total_variance\\tv_catalog_08_short_term_event.snapshot.json",
+  "config": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\configs\\default.json",
+  "n_maturities": 7,
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "n_atoms": 19,
+      "mass": 0.9999999999998268,
+      "mean": 0.9999999999998256
+    },
+    {
+      "maturity": 0.0273972602739726,
+      "n_atoms": 19,
+      "mass": 0.99999999999999,
+      "mean": 0.9999999999999888
+    },
+    {
+      "maturity": 0.038356164383561646,
+      "n_atoms": 19,
+      "mass": 0.9999999999975049,
+      "mean": 0.9999999999975214
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "n_atoms": 19,
+      "mass": 0.9999999999994174,
+      "mean": 0.9999999999993766
+    },
+    {
+      "maturity": 0.2493150684931507,
+      "n_atoms": 17,
+      "mass": 1.0000000000013993,
+      "mean": 1.0000000000009903
+    },
+    {
+      "maturity": 1.0,
+      "n_atoms": 17,
+      "mass": 0.999999999991884,
+      "mean": 0.9999999999911705
+    },
+    {
+      "maturity": 2.0,
+      "n_atoms": 17,
+      "mass": 1.0000000000001676,
+      "mean": 1.000000000000138
+    }
+  ]
+}

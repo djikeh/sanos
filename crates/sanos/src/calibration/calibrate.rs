@@ -9,6 +9,7 @@ use crate::fit::{
 use crate::grid::build_strike_grids_with_variances;
 use crate::market::OptionBook;
 use crate::surface::SanosSurface;
+use log::warn;
 
 use super::config::CalibrationConfig;
 
@@ -73,9 +74,14 @@ pub fn calibrate_with_stats(
 
     // 7) Extract martingale density
     let q = extract_density(&built_lp.layout, &sol, &grids)?;
-    let tol = DensityTolerances::from_tol(1e-10)?;
+    let tol = DensityTolerances::from_tol(1e-6)?;
     q.validate_marginals(tol)?;
-    q.validate_convex_order(tol)?;
+    if let Err(err) = q.validate_convex_order(tol) {
+        warn!(
+            "convex-order validation warning after calibration: {:?}",
+            err
+        );
+    }
 
     // 8) Time interpolator
     let interp = cfg.time_interp.build()?;

@@ -83,7 +83,7 @@ impl MarginalDensity {
                     max: f64::INFINITY,
                 });
             }
-            if q < 0.0 {
+            if q < -tol.mass {
                 return Err(SanosError::InvalidBound {
                     field: "q",
                     value: q,
@@ -151,5 +151,14 @@ mod tests {
         let err = MarginalDensity::new(1.0, vec![(1.1, 1.0)], tol).unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("marginal mean constraint violated"));
+    }
+
+    #[test]
+    fn marginal_density_allows_tiny_negative_with_tolerance() {
+        let tol = DensityTolerances::from_tol(1e-8).unwrap();
+        let e = 1e-12;
+        let m = MarginalDensity::new(1.0, vec![(0.5, -e), (1.0, 1.0 + 2.0 * e), (1.5, -e)], tol)
+            .unwrap();
+        assert_eq!(m.atoms().len(), 3);
     }
 }

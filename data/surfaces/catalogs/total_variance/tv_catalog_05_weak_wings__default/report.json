@@ -1,0 +1,37 @@
+{
+  "snapshot": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\snapshots\\catalogs\\total_variance\\tv_catalog_05_weak_wings.snapshot.json",
+  "config": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\configs\\default.json",
+  "n_maturities": 5,
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "n_atoms": 28,
+      "mass": 1.0,
+      "mean": 1.0
+    },
+    {
+      "maturity": 0.0821917808219178,
+      "n_atoms": 28,
+      "mass": 0.9999999999999992,
+      "mean": 0.9999999999999991
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "n_atoms": 28,
+      "mass": 0.9999999999999944,
+      "mean": 0.9999999999999944
+    },
+    {
+      "maturity": 0.4931506849315068,
+      "n_atoms": 28,
+      "mass": 1.0000000000000757,
+      "mean": 1.0000000000000755
+    },
+    {
+      "maturity": 1.0,
+      "n_atoms": 28,
+      "mass": 1.0000000000000073,
+      "mean": 1.000000000000007
+    }
+  ]
+}

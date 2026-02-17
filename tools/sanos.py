@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +28,36 @@ def resolve_named_json(root: Path, subdir: str, name: str) -> Path:
     if not path.exists():
         raise SystemExit(f"Missing file: {path}")
     return path
+
+
+def snapshot_name_from_path(path: Path) -> str:
+    name = path.name
+    suffix = ".snapshot.json"
+    if name.endswith(suffix):
+        return name[: -len(suffix)]
+    return stem_name(name)
+
+
+def resolve_snapshot_catalog(root: Path, catalog: str) -> tuple[Path, list[Path]]:
+    catalog_name = stem_name(catalog)
+    catalog_dir = root / "data" / "snapshots" / "catalogs" / catalog_name
+    if not catalog_dir.exists() or not catalog_dir.is_dir():
+        raise SystemExit(f"Missing snapshot catalog directory: {catalog_dir}")
+
+    snapshots = sorted(path for path in catalog_dir.glob("*.json") if path.is_file())
+    if not snapshots:
+        raise SystemExit(f"No .json snapshots found in catalog directory: {catalog_dir}")
+
+    run_ids = set()
+    for snapshot_path in snapshots:
+        run_name = snapshot_name_from_path(snapshot_path)
+        if run_name in run_ids:
+            raise SystemExit(
+                f"Duplicate snapshot run name '{run_name}' in catalog directory: {catalog_dir}"
+            )
+        run_ids.add(run_name)
+
+    return catalog_dir, snapshots
 
 
 def ensure_dir(path: Path) -> None:
@@ -92,7 +123,7 @@ def _top_smoothness_improvements(cmp_data: dict, n: int = 3) -> list[dict]:
 
 
 def build_markdown_report(
-    root: Path,
+    reports_dir: Path,
     run_id: str,
     config_path: Path,
     snapshot_path: Path,
@@ -102,7 +133,6 @@ def build_markdown_report(
     surface_path: Path,
     plots_generated: bool,
 ) -> Path:
-    reports_dir = root / "data" / "reports"
     ensure_dir(reports_dir)
     report_path = reports_dir / f"{run_id}.md"
 
@@ -111,8 +141,10 @@ def build_markdown_report(
     no_arb = diagnostics.get("no_arbitrage", {})
     smooth_cmp = diagnostics.get("smoothness_comparison")
     per = diagnostics.get("per_maturity", [])
-    image_rel = Path("..") / "images" / run_id
-    surface_rel = Path("..") / "surfaces" / run_id
+    image_rel = Path(os.path.relpath(images_dir, reports_dir))
+    surface_rel = Path(os.path.relpath(surfaces_dir, reports_dir))
+    image_rel_txt = image_rel.as_posix()
+    surface_rel_txt = surface_rel.as_posix()
 
     lines: list[str] = []
     lines.append(f"# Calibration Report - `{run_id}`")
@@ -248,17 +280,17 @@ def build_markdown_report(
     lines.append("")
     lines.append("## Figures And Interpretation")
     if plots_generated:
-        lines.append(f"- Price smiles: `{image_rel}/{run_id}_smiles_fit.png`")
+        lines.append(f"- Price smiles: `{image_rel_txt}/{run_id}_smiles_fit.png`")
         lines.append("  Interpretation: verifier si la courbe `Model` reste dans la bande `Bid/Ask` sur tous les strikes.")
-        lines.append(f"- IV smiles: `{image_rel}/{run_id}_smiles_iv_fit.png`")
+        lines.append(f"- IV smiles: `{image_rel_txt}/{run_id}_smiles_iv_fit.png`")
         lines.append("  Interpretation: controler la coherence de skew/smile en volatilite implicite, pas seulement en prix.")
-        lines.append(f"- Residual heatmap: `{image_rel}/{run_id}_residual_heatmap.png`")
+        lines.append(f"- Residual heatmap: `{image_rel_txt}/{run_id}_residual_heatmap.png`")
         lines.append("  Interpretation: rechercher des zones systematiques de sous/sur-pricing selon maturite et strike.")
-        lines.append(f"- Quality summary: `{image_rel}/{run_id}_quality_summary.png`")
+        lines.append(f"- Quality summary: `{image_rel_txt}/{run_id}_quality_summary.png`")
         lines.append("  Interpretation: vue compacte des erreurs et de la distribution des residus normalises.")
-        lines.append(f"- Surface heatmap: `{image_rel}/{run_id}_surface_heatmap.png`")
+        lines.append(f"- Surface heatmap: `{image_rel_txt}/{run_id}_surface_heatmap.png`")
         lines.append("  Interpretation: continuite globale de la surface en maturite/strike.")
-        lines.append(f"- Density comparison: `{image_rel}/{run_id}_density_comparison.png`")
+        lines.append(f"- Density comparison: `{image_rel_txt}/{run_id}_density_comparison.png`")
         lines.append("  Interpretation: comparer la densite implicite `d2C/dK2` a la densite discrete SANOS (pics `q`).")
     else:
         lines.append("- Plots skipped (`--no-plot`).")
@@ -268,25 +300,28 @@ def build_markdown_report(
         f"`surface.json` inclut un bloc `reconstruction` permettant de rebatir `SanosSurface` "
         "sans la config ni le snapshot d'origine."
     )
-    lines.append(f"- Surface JSON folder: `{surface_rel}`")
+    lines.append(f"- Surface JSON folder: `{surface_rel_txt}`")
     lines.append("")
 
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return report_path
 
 
-def run_pipeline(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
-
-    cfg_name = stem_name(args.config)
-    snap_name = stem_name(args.snapshot)
+def run_single_snapshot(
+    *,
+    root: Path,
+    config_path: Path,
+    snapshot_path: Path,
+    cfg_name: str,
+    snap_name: str,
+    surfaces_root: Path,
+    images_root: Path,
+    reports_dir: Path,
+    args: argparse.Namespace,
+) -> tuple[str, Path]:
     run_id = f"{snap_name}__{cfg_name}"
-
-    config_path = resolve_named_json(root, "configs", cfg_name)
-    snapshot_path = resolve_named_json(root, "snapshots", snap_name)
-
-    surfaces_dir = root / "data" / "surfaces" / run_id
-    images_dir = root / "data" / "images" / run_id
+    surfaces_dir = surfaces_root / run_id
+    images_dir = images_root / run_id
     ensure_dir(surfaces_dir)
     ensure_dir(images_dir)
 
@@ -378,7 +413,7 @@ def run_pipeline(args: argparse.Namespace) -> None:
         plots_generated = True
 
     report_path = build_markdown_report(
-        root=root,
+        reports_dir=reports_dir,
         run_id=run_id,
         config_path=config_path,
         snapshot_path=snapshot_path,
@@ -397,6 +432,132 @@ def run_pipeline(args: argparse.Namespace) -> None:
     print("Surface    :", surface_path)
     print("Diagnostics:", diagnostics_path)
     print("Report     :", report_path)
+    return run_id, report_path
+
+
+def write_catalog_summary(
+    *,
+    reports_dir: Path,
+    catalog_name: str,
+    cfg_name: str,
+    config_path: Path,
+    snapshot_paths: list[Path],
+    run_results: dict[str, Path],
+    failures: dict[str, str],
+) -> Path:
+    ensure_dir(reports_dir)
+    summary_path = reports_dir / f"{catalog_name}__{cfg_name}__summary.md"
+
+    lines: list[str] = []
+    lines.append(f"# Catalog Run Summary - `{catalog_name}__{cfg_name}`")
+    lines.append("")
+    lines.append("## Inputs")
+    lines.append(f"- Config: `{config_path}`")
+    lines.append(f"- Catalog: `{catalog_name}`")
+    lines.append(f"- Snapshots count: `{len(snapshot_paths)}`")
+    lines.append("")
+    lines.append("## Results")
+    lines.append(f"- Success: `{len(run_results)}`")
+    lines.append(f"- Failed: `{len(failures)}`")
+    lines.append("")
+    lines.append("| Snapshot | Status | Report | Error |")
+    lines.append("|---|---|---|---|")
+
+    for snapshot_path in snapshot_paths:
+        snap_name = snapshot_name_from_path(snapshot_path)
+        report_path = run_results.get(snap_name)
+        if report_path is not None:
+            rel_report = Path(os.path.relpath(report_path, reports_dir))
+            lines.append(f"| `{snap_name}` | success | `{rel_report}` | - |")
+            continue
+        error = failures.get(snap_name, "Unknown error").replace("|", "\\|")
+        lines.append(f"| `{snap_name}` | failed | - | `{error}` |")
+
+    lines.append("")
+    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return summary_path
+
+
+def run_pipeline(args: argparse.Namespace) -> None:
+    root = Path(args.root).resolve()
+    cfg_name = stem_name(args.config)
+    config_path = resolve_named_json(root, "configs", cfg_name)
+
+    if args.snapshot is not None:
+        snap_name = stem_name(args.snapshot)
+        snapshot_path = resolve_named_json(root, "snapshots", snap_name)
+        run_single_snapshot(
+            root=root,
+            config_path=config_path,
+            snapshot_path=snapshot_path,
+            cfg_name=cfg_name,
+            snap_name=snap_name,
+            surfaces_root=root / "data" / "surfaces",
+            images_root=root / "data" / "images",
+            reports_dir=root / "data" / "reports",
+            args=args,
+        )
+        return
+
+    catalog_name = stem_name(args.snapshot_catalog)
+    catalog_dir, snapshot_paths = resolve_snapshot_catalog(root, catalog_name)
+    surfaces_root = root / "data" / "surfaces" / "catalogs" / catalog_name
+    images_root = root / "data" / "images" / "catalogs" / catalog_name
+    reports_dir = root / "data" / "reports" / "catalogs" / catalog_name
+    ensure_dir(surfaces_root)
+    ensure_dir(images_root)
+    ensure_dir(reports_dir)
+
+    run_results: dict[str, Path] = {}
+    failures: dict[str, str] = {}
+
+    total = len(snapshot_paths)
+    print(f"Running snapshot catalog '{catalog_name}' ({total} snapshots)")
+    print(f"Catalog dir: {catalog_dir}")
+    for i, snapshot_path in enumerate(snapshot_paths, start=1):
+        snap_name = snapshot_name_from_path(snapshot_path)
+        print(f"\n[{i}/{total}] Snapshot: {snapshot_path}")
+        try:
+            _, report_path = run_single_snapshot(
+                root=root,
+                config_path=config_path,
+                snapshot_path=snapshot_path,
+                cfg_name=cfg_name,
+                snap_name=snap_name,
+                surfaces_root=surfaces_root,
+                images_root=images_root,
+                reports_dir=reports_dir,
+                args=args,
+            )
+            run_results[snap_name] = report_path
+        except SystemExit as exc:
+            reason = str(exc.code) if exc.code is not None else "SystemExit"
+            failures[snap_name] = reason
+            print(f"FAILED {snap_name}: {reason}")
+        except Exception as exc:  # noqa: BLE001
+            failures[snap_name] = str(exc)
+            print(f"FAILED {snap_name}: {exc}")
+
+    summary_path = write_catalog_summary(
+        reports_dir=reports_dir,
+        catalog_name=catalog_name,
+        cfg_name=cfg_name,
+        config_path=config_path,
+        snapshot_paths=snapshot_paths,
+        run_results=run_results,
+        failures=failures,
+    )
+
+    print("\nCATALOG DONE")
+    print("Catalog   :", catalog_name)
+    print("Config    :", config_path)
+    print("Reports   :", reports_dir)
+    print("Summary   :", summary_path)
+    print("Success   :", len(run_results))
+    print("Failed    :", len(failures))
+
+    if failures:
+        raise SystemExit(1)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -412,7 +573,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="Run calibration by config/snapshot names")
     run.add_argument("--config", required=True, help="Config file name in data/configs (without .json)")
-    run.add_argument("--snapshot", required=True, help="Snapshot file name in data/snapshots (without .json)")
+    run_input = run.add_mutually_exclusive_group(required=True)
+    run_input.add_argument("--snapshot", help="Snapshot file name in data/snapshots (without .json)")
+    run_input.add_argument(
+        "--snapshot-catalog",
+        help="Snapshot catalog directory name in data/snapshots/catalogs",
+    )
     run.add_argument("--n-maturities", type=int, default=41, help="Export grid maturities")
     run.add_argument("--n-strikes", type=int, default=81, help="Export grid strikes")
     run.add_argument("--python", default=sys.executable, help="Python executable for plot script")

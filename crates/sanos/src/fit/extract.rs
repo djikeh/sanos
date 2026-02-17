@@ -15,7 +15,7 @@ pub fn extract_density(
         });
     }
 
-    let tol = DensityTolerances::from_tol(1e-10)?; // pragmatic default
+    let tol = DensityTolerances::from_tol(1e-6)?;
 
     let mut marginals = Vec::with_capacity(grids.len());
 

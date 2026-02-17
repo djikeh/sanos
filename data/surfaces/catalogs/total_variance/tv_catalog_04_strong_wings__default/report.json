@@ -1,0 +1,49 @@
+{
+  "snapshot": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\snapshots\\catalogs\\total_variance\\tv_catalog_04_strong_wings.snapshot.json",
+  "config": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\configs\\default.json",
+  "n_maturities": 7,
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "n_atoms": 45,
+      "mass": 1.000000000014964,
+      "mean": 1.00000000002175
+    },
+    {
+      "maturity": 0.0273972602739726,
+      "n_atoms": 45,
+      "mass": 0.9999999995915871,
+      "mean": 0.9999999993486003
+    },
+    {
+      "maturity": 0.038356164383561646,
+      "n_atoms": 45,
+      "mass": 1.000000000078471,
+      "mean": 1.0000000000778881
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "n_atoms": 45,
+      "mass": 1.0000000004779248,
+      "mean": 1.0000000005005607
+    },
+    {
+      "maturity": 0.2493150684931507,
+      "n_atoms": 45,
+      "mass": 1.000000000989937,
+      "mean": 1.0000000009610321
+    },
+    {
+      "maturity": 1.0,
+      "n_atoms": 45,
+      "mass": 0.9999999999703959,
+      "mean": 0.9999999999696042
+    },
+    {
+      "maturity": 2.0,
+      "n_atoms": 45,
+      "mass": 0.9999999999998782,
+      "mean": 0.9999999999998528
+    }
+  ]
+}

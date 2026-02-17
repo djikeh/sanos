@@ -48,11 +48,16 @@ The top-level orchestrator is Python and does not create Rust dependencies on `t
 python tools/sanos.py run --config default --snapshot my_snapshot
 ```
 
+Catalog run:
+```bash
+python tools/sanos.py run --config default --snapshot-catalog total_variance
+```
+
 Shortcuts:
 - Windows (from repo root): `sanos.cmd run --config default --snapshot my_snapshot`
 - Linux/macOS (from repo root): `./sanos run --config default --snapshot my_snapshot`
 
-It resolves:
+Single snapshot resolves:
 - `data/configs/default.json`
 - `data/snapshots/my_snapshot.json`
 
@@ -62,6 +67,16 @@ Then it:
 3. Writes JSON outputs in `data/surfaces/<snapshot>__<config>/`.
 4. Generates calibration quality plots in `data/images/<snapshot>__<config>/`.
 5. Generates a Markdown report in `data/reports/<snapshot>__<config>.md`.
+
+Catalog run resolves:
+- `data/configs/default.json`
+- `data/snapshots/catalogs/total_variance/*.json`
+
+Then it runs each snapshot and writes:
+- Surfaces: `data/surfaces/catalogs/<catalog>/<snapshot>__<config>/`
+- Images: `data/images/catalogs/<catalog>/<snapshot>__<config>/`
+- Per-run reports: `data/reports/catalogs/<catalog>/<snapshot>__<config>.md`
+- Batch summary report: `data/reports/catalogs/<catalog>/<catalog>__<config>__summary.md`
 
 Optional flags:
 - `--no-validate`
