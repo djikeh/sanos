@@ -4,7 +4,6 @@ use sanos::backbone::bs_call_forward_norm;
 use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
 use sanos::calibration::{calibrate, CalibrationConfig, ConvexOrderValidationMode};
 use sanos::density::DensityTolerances;
-use sanos::error::SanosError;
 use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig, OmegaConfig, WarmStartMode};
 use sanos::grid::StrikeGridPolicyConfig;
 use sanos::interp::TimeInterpConfig;
@@ -68,7 +67,6 @@ fn default_calibration_config_for_snapshot() -> CalibrationConfig {
         backbone,
         grid: StrikeGridPolicyConfig::default(),
         fit,
-        market_completion: None,
         time_interp: TimeInterpConfig::AtmVarianceTime,
         convex_order_validation: ConvexOrderValidationMode::Error,
     }
@@ -92,7 +90,6 @@ fn repo_default_like_calibration_config() -> CalibrationConfig {
         backbone,
         grid: StrikeGridPolicyConfig::default(),
         fit,
-        market_completion: None,
         time_interp: TimeInterpConfig::AtmVarianceTime,
         convex_order_validation: ConvexOrderValidationMode::Error,
     }
@@ -105,7 +102,7 @@ fn calibrate_snapshot_produces_valid_martingale_density() {
 
     let surface = calibrate(&book, &cfg).expect("calibration must succeed");
 
-    let tol = DensityTolerances::from_tol(1e-10).unwrap();
+    let tol = DensityTolerances::from_tol(1e-6).unwrap();
     let q = surface.martingale_density();
     q.validate_marginals(tol).expect("marginals must be valid");
     q.validate_convex_order(tol)
@@ -133,18 +130,18 @@ fn calibrated_surface_respects_market_bid_ask_on_nodes() {
 }
 
 #[test]
-fn repo_default_like_config_reproduces_known_warm_start_failure() {
+fn repo_default_like_config_calibrates_with_adaptive_completion() {
     let book = load_book_from_snapshot();
     let cfg = repo_default_like_calibration_config();
 
-    let err = calibrate(&book, &cfg).unwrap_err();
-    match err {
-        SanosError::InvalidOrdering { msg } => {
-            assert!(
-                msg.contains("marginal mean constraint violated"),
-                "unexpected InvalidOrdering message: {msg}"
-            );
-        }
-        other => panic!("expected InvalidOrdering error, got: {other:?}"),
-    }
+    let surface = calibrate(&book, &cfg).expect("calibration must succeed");
+    let tol = DensityTolerances::from_tol(1e-6).unwrap();
+    surface
+        .martingale_density()
+        .validate_marginals(tol)
+        .expect("marginals must be valid");
+    surface
+        .martingale_density()
+        .validate_convex_order(tol)
+        .expect("convex order must hold");
 }

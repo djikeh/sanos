@@ -145,36 +145,34 @@ pub fn complete_slice_remark_2_8(
     cfg.validate()?;
     validate_internal_slice(k_internal, calls_internal, cfg.tol)?;
 
-    let k2 = k_internal[0];
-    let c2 = calls_internal[0];
-    let k3 = k_internal[1];
-    let c3 = calls_internal[1];
-    let d_c2 = (c3 - c2) / (k3 - k2);
-
-    let k_last = *k_internal.last().unwrap_or(&f64::NAN);
-    let c_last = *calls_internal.last().unwrap_or(&f64::NAN);
-    let k_last2 = k_internal[k_internal.len() - 2];
-    let c_last2 = calls_internal[calls_internal.len() - 2];
-    let d_c_last2 = (c_last - c_last2) / (k_last - k_last2);
-
-    let k1 = choose_k1(k2, c2, d_c2, cfg)?;
-    let k_n = choose_k_n(k_last, c_last, d_c_last2, cfg)?;
-
     let mut k = Vec::with_capacity(k_internal.len() + 3);
     let mut calls = Vec::with_capacity(calls_internal.len() + 3);
     k.push(0.0);
     calls.push(1.0);
-    k.push(k1);
-    calls.push(1.0 - k1);
     k.extend_from_slice(k_internal);
     calls.extend_from_slice(calls_internal);
-    k.push(k_n);
-    calls.push(0.0);
 
-    let mut slopes = Vec::with_capacity(k.len());
-    for i in 0..(k.len() - 1) {
-        slopes.push((calls[i + 1] - calls[i]) / (k[i + 1] - k[i]));
+    if needs_left_completion(&k, &calls, cfg)? {
+        let slopes = compute_slopes(&k, &calls)?;
+        let k2 = k[1];
+        let c2 = calls[1];
+        let d_c2 = slopes[1];
+        let k1 = choose_k1(k2, c2, d_c2, cfg)?;
+        k.insert(1, k1);
+        calls.insert(1, 1.0 - k1);
     }
+
+    if needs_right_completion(&k, &calls, cfg)? {
+        let slopes = compute_slopes(&k, &calls)?;
+        let k_last = *k.last().unwrap_or(&f64::NAN);
+        let c_last = *calls.last().unwrap_or(&f64::NAN);
+        let d_c_last2 = *slopes.last().unwrap_or(&f64::NAN);
+        let k_n = choose_k_n(k_last, c_last, d_c_last2, cfg)?;
+        k.push(k_n);
+        calls.push(0.0);
+    }
+
+    let mut slopes = compute_slopes(&k, &calls)?;
     slopes.push(0.0); // paper convention: dC^N = 0
 
     let n = k.len() - 1;
@@ -183,7 +181,7 @@ pub fn complete_slice_remark_2_8(
     let d_c2_final = slopes[2];
     let d_c_last2_final = slopes[n - 2];
     let d_c_last1 = slopes[n - 1];
-    if !(d_c0 + cfg.slope_margin < d_c1 && d_c1 + cfg.slope_margin < d_c2_final) {
+    if !(d_c0 <= d_c1 + cfg.slope_margin && d_c1 <= d_c2_final + cfg.slope_margin) {
         return Err(SanosError::External {
             msg: format!(
                 "left completion inequalities violated after assembly: dC0={:+.6e}, dC1={:+.6e}, dC2={:+.6e}, margin={:.3e}",
@@ -191,7 +189,7 @@ pub fn complete_slice_remark_2_8(
             ),
         });
     }
-    if !(d_c_last2_final + cfg.slope_margin < d_c_last1 && d_c_last1 + cfg.slope_margin < 0.0) {
+    if !(d_c_last2_final <= d_c_last1 + cfg.slope_margin && d_c_last1 <= cfg.slope_margin) {
         return Err(SanosError::External {
             msg: format!(
                 "right completion inequalities violated after assembly: dC_last2={:+.6e}, dC_last1={:+.6e}, dC_N=0, margin={:.3e}",
@@ -260,6 +258,8 @@ pub fn complete_slice_remark_2_8(
     let min_p = density
         .iter()
         .fold(f64::INFINITY, |acc, &v| if v < acc { v } else { acc });
+    let k1_diag = k[1];
+    let k_n_diag = k[n];
 
     Ok(CompletedSlice {
         k,
@@ -267,8 +267,8 @@ pub fn complete_slice_remark_2_8(
         slopes,
         density,
         diagnostics: CompletionDiagnostics {
-            k1,
-            k_n,
+            k1: k1_diag,
+            k_n: k_n_diag,
             d_c0,
             d_c1,
             d_c2: d_c2_final,
@@ -279,6 +279,97 @@ pub fn complete_slice_remark_2_8(
             min_p,
         },
     })
+}
+
+fn compute_slopes(k: &[f64], calls: &[f64]) -> SanosResult<Vec<f64>> {
+    if k.len() != calls.len() || k.len() < 2 {
+        return Err(SanosError::External {
+            msg: format!(
+                "cannot compute slopes on malformed slice: strikes={}, calls={}",
+                k.len(),
+                calls.len()
+            ),
+        });
+    }
+    let mut slopes = Vec::with_capacity(k.len() - 1);
+    for i in 0..(k.len() - 1) {
+        let dk = k[i + 1] - k[i];
+        if !dk.is_finite() || dk <= 0.0 {
+            return Err(SanosError::External {
+                msg: format!(
+                    "cannot compute slope with non-positive spacing at i={}: K_i={}, K_next={}",
+                    i, k[i], k[i + 1]
+                ),
+            });
+        }
+        slopes.push((calls[i + 1] - calls[i]) / dk);
+    }
+    Ok(slopes)
+}
+
+fn needs_left_completion(k: &[f64], calls: &[f64], cfg: &CompletionConfig) -> SanosResult<bool> {
+    if k.len() < 4 || calls.len() < 4 {
+        return Err(SanosError::External {
+            msg: format!(
+                "Remark 2.8 left completion requires at least 4 nodes including K0, got strikes={}, calls={}",
+                k.len(),
+                calls.len()
+            ),
+        });
+    }
+    let k1_existing = k[1];
+    let c1_existing = calls[1];
+    let c1_target = 1.0 - k1_existing;
+    if (c1_existing - c1_target).abs() > cfg.tol {
+        return Ok(true);
+    }
+
+    let slopes = compute_slopes(k, calls)?;
+    if slopes.len() < 3 {
+        return Err(SanosError::External {
+            msg: format!(
+                "Remark 2.8 left completion requires at least 3 slope segments, got {}",
+                slopes.len()
+            ),
+        });
+    }
+    let d_c0 = slopes[0];
+    let d_c1 = slopes[1];
+    let d_c2 = slopes[2];
+    let left_already_completed =
+        d_c0 <= d_c1 + cfg.slope_margin && d_c1 <= d_c2 + cfg.slope_margin;
+    Ok(!left_already_completed)
+}
+
+fn needs_right_completion(k: &[f64], calls: &[f64], cfg: &CompletionConfig) -> SanosResult<bool> {
+    if k.len() < 3 || calls.len() < 3 {
+        return Err(SanosError::External {
+            msg: format!(
+                "Remark 2.8 right completion requires at least 3 nodes including K0, got strikes={}, calls={}",
+                k.len(),
+                calls.len()
+            ),
+        });
+    }
+    let c_last = *calls.last().unwrap_or(&f64::NAN);
+    if c_last.abs() > cfg.tol {
+        return Ok(true);
+    }
+
+    let slopes = compute_slopes(k, calls)?;
+    if slopes.len() < 2 {
+        return Err(SanosError::External {
+            msg: format!(
+                "Remark 2.8 right completion requires at least 2 slope segments, got {}",
+                slopes.len()
+            ),
+        });
+    }
+    let d_c_last2 = slopes[slopes.len() - 2];
+    let d_c_last1 = slopes[slopes.len() - 1];
+    let right_already_completed =
+        d_c_last2 <= d_c_last1 + cfg.slope_margin && d_c_last1 <= cfg.slope_margin;
+    Ok(!right_already_completed)
 }
 
 fn choose_k1(k2: f64, c2: f64, d_c2: f64, cfg: &CompletionConfig) -> SanosResult<f64> {
@@ -400,9 +491,12 @@ fn validate_internal_slice(k_internal: &[f64], calls_internal: &[f64], tol: f64)
                 msg: format!("invalid strike at i={}: K={} must be > 0", i, k),
             });
         }
-        if !(0.0 < c && c < 1.0) {
+        if c < -tol || c > 1.0 + tol {
             return Err(SanosError::External {
-                msg: format!("invalid call at i={}: C={} must satisfy 0 < C < 1", i, c),
+                msg: format!(
+                    "invalid call at i={}: C={} must satisfy -tol <= C <= 1+tol with tol={}",
+                    i, c, tol
+                ),
             });
         }
         if i > 0 {

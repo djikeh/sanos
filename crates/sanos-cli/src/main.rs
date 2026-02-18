@@ -395,7 +395,6 @@ fn default_calibration_config() -> CalibrationConfig {
         backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
         grid: StrikeGridPolicyConfig::default(),
         fit,
-        market_completion: None,
         time_interp: TimeInterpConfig::default(),
         convex_order_validation: ConvexOrderValidationMode::Error,
     }

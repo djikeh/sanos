@@ -414,6 +414,7 @@ mod tests {
             mode: WarmStartMode::None,
             price_proxy: InitPriceProxyConfig::Mid,
             feasibility_tol: 1e-8,
+            market_completion: crate::market::CompletionConfig::default(),
         };
 
         let out = build_warm_start(&grids, &model, &cfg).unwrap();
@@ -431,6 +432,7 @@ mod tests {
             mode: WarmStartMode::BackboneSynthetic,
             price_proxy: InitPriceProxyConfig::Ask,
             feasibility_tol: 1e-8,
+            market_completion: crate::market::CompletionConfig::default(),
         };
 
         let out = build_warm_start(&grids, &model, &cfg).unwrap();
@@ -446,6 +448,7 @@ mod tests {
             mode: WarmStartMode::BackboneSynthetic,
             price_proxy: InitPriceProxyConfig::Mid,
             feasibility_tol: 1e-8,
+            market_completion: crate::market::CompletionConfig::default(),
         };
 
         let err = build_warm_start(&grids, &model, &cfg).unwrap_err();
@@ -460,6 +463,7 @@ mod tests {
             mode: WarmStartMode::BackboneSynthetic,
             price_proxy: InitPriceProxyConfig::Mid,
             feasibility_tol: 1e-8,
+            market_completion: crate::market::CompletionConfig::default(),
         };
 
         let err = build_warm_start(&grids, &model, &cfg).unwrap_err();

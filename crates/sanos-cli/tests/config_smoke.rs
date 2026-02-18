@@ -50,12 +50,6 @@ fn repo_configs_parse_and_calibrate_on_reference_snapshot() {
         let cfg = sanos_io::load_calibration_config(&cfg_path)
             .unwrap_or_else(|err| panic!("failed to parse config {}: {err:#}", cfg_path.display()));
 
-        // Warm-start configs without practical completion are not guaranteed to be
-        // feasible on every snapshot in this smoke test.
-        if cfg.fit.initialization.uses_warm_start() && cfg.market_completion.is_none() {
-            continue;
-        }
-
         calibrate_with_stats(&book, &cfg)
             .unwrap_or_else(|err| panic!("calibration failed for {}: {err:?}", cfg_path.display()));
         calibrated += 1;

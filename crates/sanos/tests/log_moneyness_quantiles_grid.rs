@@ -161,7 +161,6 @@ fn calibrate_runs_with_log_moneyness_quantiles_grid_policy() {
             backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
             grid: StrikeGridPolicyConfig::LogMoneynessQuantiles(grid_cfg),
             fit: fit.clone(),
-            market_completion: None,
             time_interp: TimeInterpConfig::AtmVarianceTime,
             convex_order_validation: ConvexOrderValidationMode::Error,
         };

@@ -1,0 +1,61 @@
+{
+  "snapshot": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\snapshots\\catalogs\\total_variance\\tv_catalog_06_steep_upward_term_structure.snapshot.json",
+  "config": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\configs\\default.json",
+  "n_maturities": 9,
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "n_atoms": 13,
+      "mass": 0.9999999999999953,
+      "mean": 0.9999999999999968
+    },
+    {
+      "maturity": 0.038356164383561646,
+      "n_atoms": 15,
+      "mass": 0.9999999999999998,
+      "mean": 0.9999999999999996
+    },
+    {
+      "maturity": 0.0821917808219178,
+      "n_atoms": 17,
+      "mass": 1.0000000000000007,
+      "mean": 1.0000000000000004
+    },
+    {
+      "maturity": 0.1643835616438356,
+      "n_atoms": 17,
+      "mass": 0.9999999999999931,
+      "mean": 0.999999999999992
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "n_atoms": 17,
+      "mass": 0.9999999999999921,
+      "mean": 0.9999999999999923
+    },
+    {
+      "maturity": 0.4931506849315068,
+      "n_atoms": 17,
+      "mass": 1.0000000000009472,
+      "mean": 1.000000000000551
+    },
+    {
+      "maturity": 0.7397260273972602,
+      "n_atoms": 17,
+      "mass": 0.9999999999991565,
+      "mean": 1.0000000000006417
+    },
+    {
+      "maturity": 1.0,
+      "n_atoms": 17,
+      "mass": 0.9999999999632103,
+      "mean": 0.9999999999590038
+    },
+    {
+      "maturity": 2.0,
+      "n_atoms": 19,
+      "mass": 0.9999999999943037,
+      "mean": 0.9999999999960173
+    }
+  ]
+}

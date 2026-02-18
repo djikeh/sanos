@@ -83,7 +83,6 @@ fn snapshot_calibration_config() -> CalibrationConfig {
         backbone,
         grid: StrikeGridPolicyConfig::default(),
         fit,
-        market_completion: None,
         time_interp: TimeInterpConfig::AtmVarianceTime,
         convex_order_validation: ConvexOrderValidationMode::Error,
     }

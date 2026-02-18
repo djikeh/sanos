@@ -51,7 +51,15 @@
     "initialization": {
       "mode": "BackboneSynthetic",
       "price_proxy": "Mid",
-      "feasibility_tol": 1e-8
+      "feasibility_tol": 1e-8,
+      "market_completion": {
+        "k1_ratio": 0.2,
+        "kN_ratio": 2.0,
+        "max_iters": 50,
+        "slope_margin": 1e-10,
+        "hard_caps": null,
+        "tol": 1e-10
+      }
     }
   },
   "time_interp": "AtmVarianceTime",

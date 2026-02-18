@@ -1,4 +1,5 @@
 use crate::error::{SanosError, SanosResult};
+use crate::market::CompletionConfig;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +164,9 @@ pub struct InitializationConfig {
     pub price_proxy: InitPriceProxyConfig,
     /// Numerical tolerance used for strict warm-start feasibility checks.
     pub feasibility_tol: f64,
+    /// Practical market completion (Remark 2.8) config used for synthetic warm-start.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub market_completion: CompletionConfig,
 }
 
 impl Default for InitializationConfig {
@@ -171,6 +175,7 @@ impl Default for InitializationConfig {
             mode: WarmStartMode::default(),
             price_proxy: InitPriceProxyConfig::Mid,
             feasibility_tol: 1e-8,
+            market_completion: CompletionConfig::default(),
         }
     }
 }
@@ -194,6 +199,9 @@ impl InitializationConfig {
                 min: 0.0,
                 max: f64::INFINITY,
             });
+        }
+        if self.mode == WarmStartMode::BackboneSynthetic {
+            self.market_completion.validate()?;
         }
         Ok(())
     }

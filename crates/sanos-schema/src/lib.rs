@@ -27,7 +27,6 @@ mod tests {
             backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
             grid: StrikeGridPolicyConfig::default(),
             fit: FitConfig::default(),
-            market_completion: None,
             time_interp: TimeInterpConfig::default(),
             convex_order_validation: ConvexOrderValidationMode::Error,
         };

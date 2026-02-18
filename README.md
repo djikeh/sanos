@@ -111,6 +111,7 @@ Optional flags:
 - `fit.kernel.omega`: `"Zero"`, `"One"`, or `"Both"` (`"Both"` enforces both constraint blocks in the same LP).
 - `fit.initialization.mode`: `"None"` (default) or `"BackboneSynthetic"`.
 - `fit.initialization.feasibility_tol`: non-negative finite tolerance for warm-start feasibility checks.
+- `fit.initialization.market_completion`: Remark 2.8 completion config (defaults applied if omitted), used only when `mode = "BackboneSynthetic"`.
 
 Minimal example:
 ```json
@@ -122,7 +123,15 @@ Minimal example:
     "initialization": {
       "mode": "None",
       "price_proxy": "Mid",
-      "feasibility_tol": 1e-8
+      "feasibility_tol": 1e-8,
+      "market_completion": {
+        "k1_ratio": 0.2,
+        "kN_ratio": 2.0,
+        "max_iters": 50,
+        "slope_margin": 1e-10,
+        "hard_caps": null,
+        "tol": 1e-10
+      }
     }
   }
 }
