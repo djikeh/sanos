@@ -74,6 +74,7 @@ fn build_config() -> CalibrationConfig {
         backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
         grid: StrikeGridPolicyConfig::default(),
         fit: FitConfig::default(),
+        market_completion: None,
         time_interp: TimeInterpConfig::default(),
         convex_order_validation: ConvexOrderValidationMode::Error,
     }
@@ -103,6 +104,7 @@ let cfg = CalibrationConfig {
     backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
     grid: StrikeGridPolicyConfig::default(),
     fit: FitConfig::default(), // default solver = Microlp
+    market_completion: None,
     time_interp: TimeInterpConfig::default(),
     convex_order_validation: ConvexOrderValidationMode::Error,
 };

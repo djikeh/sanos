@@ -4,7 +4,8 @@ use sanos::backbone::bs_call_forward_norm;
 use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
 use sanos::calibration::{calibrate, CalibrationConfig, ConvexOrderValidationMode};
 use sanos::density::DensityTolerances;
-use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig};
+use sanos::error::SanosError;
+use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig, OmegaConfig, WarmStartMode};
 use sanos::grid::StrikeGridPolicyConfig;
 use sanos::interp::TimeInterpConfig;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
@@ -67,6 +68,31 @@ fn default_calibration_config_for_snapshot() -> CalibrationConfig {
         backbone,
         grid: StrikeGridPolicyConfig::default(),
         fit,
+        market_completion: None,
+        time_interp: TimeInterpConfig::AtmVarianceTime,
+        convex_order_validation: ConvexOrderValidationMode::Error,
+    }
+}
+
+/// Mirrors `data/configs/default.json` (current repo default).
+fn repo_default_like_calibration_config() -> CalibrationConfig {
+    let backbone = BackboneConfig::BsTimeChanged(BsTimeChangedConfig {
+        eta: 0.25,
+        ..BsTimeChangedConfig::default()
+    });
+
+    let mut fit = FitConfig::default();
+    fit.kernel.omega = OmegaConfig::Zero;
+    fit.objective = ObjectiveConfig::L1Mid { weight: 1.0 };
+    fit.solver = LpSolverConfig::Microlp;
+    fit.initialization.mode = WarmStartMode::BackboneSynthetic;
+    fit.initialization.feasibility_tol = 1e-8;
+
+    CalibrationConfig {
+        backbone,
+        grid: StrikeGridPolicyConfig::default(),
+        fit,
+        market_completion: None,
         time_interp: TimeInterpConfig::AtmVarianceTime,
         convex_order_validation: ConvexOrderValidationMode::Error,
     }
@@ -103,5 +129,22 @@ fn calibrated_surface_respects_market_bid_ask_on_nodes() {
             assert!(c + eps >= q.bid, "T={t}, k={}, c={c}, bid={}", q.k, q.bid);
             assert!(c <= q.ask + eps, "T={t}, k={}, c={c}, ask={}", q.k, q.ask);
         }
+    }
+}
+
+#[test]
+fn repo_default_like_config_reproduces_known_warm_start_failure() {
+    let book = load_book_from_snapshot();
+    let cfg = repo_default_like_calibration_config();
+
+    let err = calibrate(&book, &cfg).unwrap_err();
+    match err {
+        SanosError::InvalidOrdering { msg } => {
+            assert!(
+                msg.contains("marginal mean constraint violated"),
+                "unexpected InvalidOrdering message: {msg}"
+            );
+        }
+        other => panic!("expected InvalidOrdering error, got: {other:?}"),
     }
 }

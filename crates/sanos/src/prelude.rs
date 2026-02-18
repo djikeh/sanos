@@ -1,6 +1,10 @@
 // src/prelude.rs
 pub use crate::error::SanosError;
-pub use crate::market::{CallQuote, OptionChain, OptionBook, AtmMidPolicy, NearestOrLinearLogMoneyness};
+pub use crate::market::{
+    complete_slice_remark_2_8, AtmMidPolicy, CallQuote, CompletedSlice, CompletionConfig,
+    CompletionDiagnostics, CompletionHardCaps, NearestOrLinearLogMoneyness, OptionBook,
+    OptionChain,
+};
 pub use crate::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
 pub use crate::interp::{LinearTime, TimeInterpolator};
 pub use crate::surface::SanosSurface;

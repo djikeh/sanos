@@ -601,6 +601,7 @@ mod tests {
                 LogMoneynessQuantilesGridConfig::default(),
             ),
             fit: FitConfig::default(),
+            market_completion: None,
             time_interp: TimeInterpConfig::default(),
             convex_order_validation: ConvexOrderValidationMode::Error,
         };
