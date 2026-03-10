@@ -1,0 +1,49 @@
+{
+  "snapshot": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\snapshots\\catalogs\\total_variance\\tv_catalog_10_high_vol_regime_long_end.snapshot.json",
+  "config": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\configs\\default.json",
+  "n_maturities": 7,
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "n_atoms": 19,
+      "mass": 1.0000000000000004,
+      "mean": 1.0000000000000004
+    },
+    {
+      "maturity": 0.0821917808219178,
+      "n_atoms": 21,
+      "mass": 1.000000000000005,
+      "mean": 1.0000000000000042
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "n_atoms": 20,
+      "mass": 1.0000000000001819,
+      "mean": 1.0000000000002587
+    },
+    {
+      "maturity": 0.4931506849315068,
+      "n_atoms": 19,
+      "mass": 1.0000000000005709,
+      "mean": 1.0000000000005114
+    },
+    {
+      "maturity": 1.0,
+      "n_atoms": 20,
+      "mass": 1.0000000000000635,
+      "mean": 1.0000000000000775
+    },
+    {
+      "maturity": 2.0,
+      "n_atoms": 21,
+      "mass": 0.9999999999990579,
+      "mean": 0.9999999999990941
+    },
+    {
+      "maturity": 3.0,
+      "n_atoms": 20,
+      "mass": 0.9999999999988134,
+      "mean": 0.9999999999986907
+    }
+  ]
+}

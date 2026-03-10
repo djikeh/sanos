@@ -437,7 +437,13 @@ fn choose_k_n(k_last: f64, c_last: f64, d_c_last2: f64, cfg: &CompletionConfig) 
             return Ok(k_n);
         }
 
-        let mut next = k_n * 1.5;
+        // If slope is still too negative, move KN farther right.
+        // If slope is not negative enough (too close to 0), move KN closer to K_last.
+        let mut next = if !left_ok {
+            k_n * 1.5
+        } else {
+            k_last + 0.5 * (k_n - k_last)
+        };
         if let Some(caps) = &cfg.hard_caps {
             next = next.max(caps.k_n_min).min(caps.k_n_max);
         }
@@ -594,5 +600,14 @@ mod tests {
             .unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("convexity"));
+    }
+
+    #[test]
+    fn completion_kn_search_can_move_left_when_tail_call_is_tiny() {
+        let k = vec![0.65, 0.8, 1.0, 1.2, 1.656];
+        let c = vec![0.35, 0.2, 0.08, 0.01, 1.2e-10];
+        let cfg = CompletionConfig::default();
+        let out = complete_slice_remark_2_8(&k, &c, &cfg).unwrap();
+        assert!(out.diagnostics.k_n > 1.656);
     }
 }

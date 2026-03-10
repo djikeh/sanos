@@ -35,7 +35,7 @@
   },
   "fit": {
     "kernel": {
-      "omega": "Zero"
+      "omega": "One"
     },
     "objective": {
       "L1Mid": {
@@ -49,7 +49,7 @@
     },
     "solver": "Microlp",
     "initialization": {
-      "mode": "BackboneSynthetic",
+      "mode": "None",
       "price_proxy": "Mid",
       "feasibility_tol": 1e-8,
       "market_completion": {

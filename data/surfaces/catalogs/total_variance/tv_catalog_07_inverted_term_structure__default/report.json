@@ -1,0 +1,43 @@
+{
+  "snapshot": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\snapshots\\catalogs\\total_variance\\tv_catalog_07_inverted_term_structure.snapshot.json",
+  "config": "C:\\Users\\djike\\Dev\\Repos\\paper\\sanos\\data\\configs\\default.json",
+  "n_maturities": 6,
+  "marginals": [
+    {
+      "maturity": 0.019178082191780823,
+      "n_atoms": 19,
+      "mass": 1.0,
+      "mean": 0.9999999999999996
+    },
+    {
+      "maturity": 0.057534246575342465,
+      "n_atoms": 19,
+      "mass": 0.999999999999952,
+      "mean": 0.9999999999999512
+    },
+    {
+      "maturity": 0.1232876712328767,
+      "n_atoms": 18,
+      "mass": 1.000000000002116,
+      "mean": 1.0000000000021116
+    },
+    {
+      "maturity": 0.2465753424657534,
+      "n_atoms": 18,
+      "mass": 1.000000000002139,
+      "mean": 1.0000000000019136
+    },
+    {
+      "maturity": 0.4931506849315068,
+      "n_atoms": 16,
+      "mass": 1.000000000004182,
+      "mean": 1.0000000000043217
+    },
+    {
+      "maturity": 1.0,
+      "n_atoms": 19,
+      "mass": 0.999999999671089,
+      "mean": 0.9999999996117428
+    }
+  ]
+}
