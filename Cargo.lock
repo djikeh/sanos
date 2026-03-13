@@ -565,9 +565,9 @@ checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
 
 [[package]]
 name = "resopt"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc8cdd240864b4ffe508f625e1f40d28a87ae351aac35dc15223df95919195da"
+checksum = "77ffa217427d09f226d56ce6c5f89861c232fee37f75d44e14f9859b27b8b592"
 dependencies = [
  "clarabel",
 ]
