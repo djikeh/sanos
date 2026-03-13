@@ -1,18 +1,13 @@
-use crate::error::SanosResult;
 use super::{AtmVarianceTime, LinearTime, TimeInterpolator};
+use crate::error::SanosResult;
 use std::sync::Arc;
 
-#[cfg_attr(feature="serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TimeInterpConfig {
     LinearTime,
+    #[default]
     AtmVarianceTime,
-}
-
-impl Default for TimeInterpConfig {
-    fn default() -> Self {
-        TimeInterpConfig::AtmVarianceTime
-    }
 }
 
 impl TimeInterpConfig {

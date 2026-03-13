@@ -397,8 +397,8 @@ fn default_calibration_config() -> CalibrationConfig {
 }
 
 fn build_report(
-    snapshot: &PathBuf,
-    config: &PathBuf,
+    snapshot: &Path,
+    config: &Path,
     surface: &sanos::surface::SanosSurface,
 ) -> Result<CalibrationReport> {
     let marginals: Vec<MarginalReport> = surface
@@ -1204,7 +1204,9 @@ mod tests {
     #[test]
     fn default_calibration_config_validates() {
         let cfg = default_calibration_config();
-        cfg.fit.validate().expect("default fit config must validate");
+        cfg.fit
+            .validate()
+            .expect("default fit config must validate");
     }
 
     #[test]

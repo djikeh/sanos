@@ -1,14 +1,16 @@
 // src/backbone/mod.rs
 pub(crate) mod bs;
+mod builder;
+mod config;
+mod factory;
 pub(crate) mod lognormal_tc;
 pub(crate) mod y_model;
-mod config;
-mod builder;
-mod factory;
 
-pub use bs::{bs_call_forward_norm, bs_implied_atm_var_from_call, bs_implied_vol_from_call, norm_cdf};
+pub use bs::{
+    bs_call_forward_norm, bs_implied_atm_var_from_call, bs_implied_vol_from_call, norm_cdf,
+};
 pub use builder::build_time_changed_lognormal_from_book;
 pub use config::{AtmMidPolicyConfig, BsTimeChangedConfig};
+pub use factory::{build_backbone, build_backbone_with_total_variances, BackboneConfig};
 pub use lognormal_tc::TimeChangedLognormal;
 pub use y_model::{SanityCase, SanityReport, YModel};
-pub use factory::{build_backbone, build_backbone_with_total_variances, BackboneConfig};

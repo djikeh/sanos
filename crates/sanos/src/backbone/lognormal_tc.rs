@@ -17,7 +17,10 @@ pub struct TimeChangedLognormal {
 
 impl TimeChangedLognormal {
     pub fn new(var_curve: PiecewiseLinearCurve, var_scale: f64) -> Self {
-        Self { var_curve, var_scale }
+        Self {
+            var_curve,
+            var_scale,
+        }
     }
 
     #[inline]
@@ -46,7 +49,10 @@ impl TimeChangedLognormal {
 
     fn call_eta(&self, maturity: f64, a: f64, b: f64, eta: f64) -> SanosResult<f64> {
         if !maturity.is_finite() {
-            return Err(SanosError::NonFinite { field: "maturity", value: maturity });
+            return Err(SanosError::NonFinite {
+                field: "maturity",
+                value: maturity,
+            });
         }
         if maturity <= 0.0 {
             return Err(SanosError::InvalidBound {
@@ -57,13 +63,22 @@ impl TimeChangedLognormal {
             });
         }
         if !a.is_finite() {
-            return Err(SanosError::NonFinite { field: "a", value: a });
+            return Err(SanosError::NonFinite {
+                field: "a",
+                value: a,
+            });
         }
         if !b.is_finite() {
-            return Err(SanosError::NonFinite { field: "b", value: b });
+            return Err(SanosError::NonFinite {
+                field: "b",
+                value: b,
+            });
         }
         if !eta.is_finite() {
-            return Err(SanosError::NonFinite { field: "eta", value: eta });
+            return Err(SanosError::NonFinite {
+                field: "eta",
+                value: eta,
+            });
         }
         if a <= 0.0 {
             return Err(SanosError::InvalidBound {
@@ -82,7 +97,12 @@ impl TimeChangedLognormal {
             });
         }
         if eta < 0.0 {
-            return Err(SanosError::InvalidBound { field: "eta", value: eta, min: 0.0, max: f64::INFINITY, });
+            return Err(SanosError::InvalidBound {
+                field: "eta",
+                value: eta,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
         }
 
         let v = self.var(maturity)?;

@@ -88,12 +88,10 @@ fn snapshot_fixture_is_realistic_option_book() {
 fn calibrate_pipeline_step_by_step_from_real_book() {
     let book = load_book_from_snapshot();
     let cfg = snapshot_calibration_config();
-    let eta = match &cfg.backbone {
-        BackboneConfig::BsTimeChanged(bs_cfg) => bs_cfg.eta,
-    };
+    let eta = cfg.backbone.eta();
 
     // Step 1: backbone
-    let y = build_backbone(&book, &cfg.backbone).expect("backbone build must succeed");
+    let backbone_model = build_backbone(&book, &cfg.backbone).expect("backbone build must succeed");
     for chain in book.chains() {
         let t = chain.maturity();
         let atm = chain
@@ -101,7 +99,9 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
             .iter()
             .find(|q| (q.k - 1.0).abs() < 1e-12)
             .expect("ATM quote k=1.0 must exist");
-        let y_atm = y.call(t, 1.0, 1.0).expect("ATM call must be computable");
+        let y_atm = backbone_model
+            .call(t, 1.0, 1.0)
+            .expect("ATM call must be computable");
         let w_mkt =
             bs_implied_atm_var_from_call(atm.mid()).expect("ATM mid must map to implied variance");
         let expected =
@@ -113,11 +113,10 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
     }
 
     // Step 2: strike grids
-    let atm_policy = match &cfg.backbone {
-        BackboneConfig::BsTimeChanged(bs_cfg) => {
-            bs_cfg.atm_policy.build().expect("ATM policy must build")
-        }
-    };
+    let atm_policy = cfg
+        .backbone
+        .build_atm_mid_policy()
+        .expect("ATM policy must build");
     let grids =
         build_strike_grids(&book, atm_policy.as_ref(), &cfg.grid).expect("grid build must succeed");
     assert_eq!(grids.len(), book.len());
@@ -140,8 +139,8 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
     }
 
     // Step 3: kernels
-    let kernels =
-        build_kernels(&book, &grids, &y, &cfg.fit.kernel).expect("kernel build must succeed");
+    let kernels = build_kernels(&book, &grids, &backbone_model, &cfg.fit.kernel)
+        .expect("kernel build must succeed");
     assert_eq!(kernels.c.len(), book.len());
     assert_eq!(kernels.transitions.len(), book.len() - 1);
     for (j, kc) in kernels.c.iter().enumerate() {
@@ -156,11 +155,14 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
 
     // Step 4: solve with resopt
     let solved = solve(&book, &kernels, &cfg.fit).expect("solve must succeed");
-    let q = solved.density;
+    let martingale_density = solved.density;
 
     let tol = DensityTolerances::from_tol(1e-6).unwrap();
-    q.validate_marginals(tol).expect("marginals must be valid");
-    q.validate_convex_order(tol)
+    martingale_density
+        .validate_marginals(tol)
+        .expect("marginals must be valid");
+    martingale_density
+        .validate_convex_order(tol)
         .expect("convex order must hold");
 
     // Step 5: surface assembly and nodal checks
@@ -168,7 +170,7 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
         .time_interp
         .build()
         .expect("time interpolator must build");
-    let surface = SanosSurface::new(y.clone(), q, interp);
+    let surface = SanosSurface::new(backbone_model.clone(), martingale_density, interp);
 
     let _eps = 5e-4; // L2 fit may not be as tight as hard bid/ask LP constraints
     for chain in book.chains() {
@@ -177,11 +179,7 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
             let c = surface
                 .call(t, quote.k)
                 .expect("surface call must be computable");
-            assert!(
-                c.is_finite(),
-                "T={t}, k={}, c={c} must be finite",
-                quote.k,
-            );
+            assert!(c.is_finite(), "T={t}, k={}, c={c} must be finite", quote.k,);
         }
     }
 

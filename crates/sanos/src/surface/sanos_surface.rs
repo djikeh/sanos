@@ -1,6 +1,6 @@
 // src/surface/sanos_surface.rs
-use std::sync::{Arc, OnceLock};
 use std::fmt::Debug;
+use std::sync::{Arc, OnceLock};
 
 use crate::backbone::YModel;
 use crate::density::MartingaleDensity;
@@ -14,25 +14,33 @@ struct SurfaceCache {
 
 /// SANOS surface as per Theorem 3.1:
 /// - Y: backbone model exposing call(T, a, b) = E[(a Y_T - b)^+]
-/// - q: MartingaleDensity (sequence of discrete marginals)
-/// - interp: time interpolation (alpha)
+/// - q: martingale density (sequence of discrete marginals)
+/// - alpha: time interpolation weight
 #[derive(Debug, Clone)]
 pub struct SanosSurface {
-    y: Arc<dyn YModel>,
-    q: MartingaleDensity,
-    interp: Arc<dyn TimeInterpolator>,
+    backbone_model: Arc<dyn YModel>,
+    martingale_density: MartingaleDensity,
+    time_interpolator: Arc<dyn TimeInterpolator>,
     maturities: Vec<f64>,
     cache: Arc<SurfaceCache>,
 }
 
 impl SanosSurface {
-    pub fn new(y: Arc<dyn YModel>, q: MartingaleDensity, interp: Arc<dyn TimeInterpolator>) -> Self {
-        let maturities: Vec<f64> = q.marginals().iter().map(|m| m.maturity()).collect();
+    pub fn new(
+        backbone_model: Arc<dyn YModel>,
+        martingale_density: MartingaleDensity,
+        time_interpolator: Arc<dyn TimeInterpolator>,
+    ) -> Self {
+        let maturities: Vec<f64> = martingale_density
+            .marginals()
+            .iter()
+            .map(|marginal| marginal.maturity())
+            .collect();
 
         Self {
-            y,
-            q,
-            interp,
+            backbone_model,
+            martingale_density,
+            time_interpolator,
             maturities,
             cache: Arc::new(SurfaceCache::default()),
         }
@@ -40,12 +48,17 @@ impl SanosSurface {
 
     #[inline]
     pub fn y(&self) -> &Arc<dyn YModel> {
-        &self.y
+        self.backbone_model()
+    }
+
+    #[inline]
+    pub fn backbone_model(&self) -> &Arc<dyn YModel> {
+        &self.backbone_model
     }
 
     #[inline]
     pub fn martingale_density(&self) -> &MartingaleDensity {
-        &self.q
+        &self.martingale_density
     }
 
     /// Call price C(T, K) (normalized convention v0).
@@ -55,7 +68,10 @@ impl SanosSurface {
     ///   C(T,K) = (1-alpha) Ĉ_j(K) + alpha Ĉ_{j+1}(K), T in [T_j, T_{j+1}]
     pub fn call(&self, maturity: f64, strike: f64) -> SanosResult<f64> {
         if !strike.is_finite() {
-            return Err(SanosError::NonFinite { field: "strike", value: strike });
+            return Err(SanosError::NonFinite {
+                field: "strike",
+                value: strike,
+            });
         }
         if strike <= 0.0 {
             return Err(SanosError::InvalidBound {
@@ -67,34 +83,40 @@ impl SanosSurface {
         }
 
         if self.maturities.len() < 2 {
-            return Err(SanosError::InvalidOrdering { msg: "SanosSurface requires at least 2 marginals" });
+            return Err(SanosError::InvalidOrdering {
+                msg: "SanosSurface requires at least 2 marginals",
+            });
         }
 
         let atm_calls = self.atm_calls_cached()?;
-        let (j, alpha) = self.interp.alpha(maturity, &self.maturities, atm_calls)?;
+        let (j, alpha) = self
+            .time_interpolator
+            .alpha(maturity, &self.maturities, atm_calls)?;
 
-        let c0 = self.slice_call(j, strike)?;
-        let c1 = self.slice_call(j + 1, strike)?;
+        let c0 = self.slice_call_price(j, strike)?;
+        let c1 = self.slice_call_price(j + 1, strike)?;
 
         // convex combination
         Ok((1.0 - alpha) * c0 + alpha * c1)
     }
 
     /// Compute slice call Ĉ_j(K) at node maturity T_j.
-    fn slice_call(&self, j: usize, strike: f64) -> SanosResult<f64> {
-        let m = self
-            .q
-            .marginals()
-            .get(j)
-            .ok_or(SanosError::InvalidOrdering { msg: "slice index out of range" })?;
+    fn slice_call_price(&self, j: usize, strike: f64) -> SanosResult<f64> {
+        let marginal =
+            self.martingale_density
+                .marginals()
+                .get(j)
+                .ok_or(SanosError::InvalidOrdering {
+                    msg: "slice index out of range",
+                })?;
 
-        let tj = m.maturity();
+        let maturity = marginal.maturity();
         let mut acc = 0.0_f64;
 
-        for &(k_i, q_i) in m.atoms() {
+        for &(model_strike, atom_weight) in marginal.atoms() {
             // E[(k_i Y_{Tj} - K)^+]
-            let v = self.y.call(tj, k_i, strike)?;
-            acc += q_i * v;
+            let kernel_value = self.backbone_model.call(maturity, model_strike, strike)?;
+            acc += atom_weight * kernel_value;
         }
 
         Ok(acc)
@@ -103,13 +125,16 @@ impl SanosSurface {
     fn compute_atm_calls(&self) -> SanosResult<Vec<f64>> {
         let mut out = Vec::with_capacity(self.maturities.len());
         for j in 0..self.maturities.len() {
-            out.push(self.slice_call(j, 1.0)?);
+            out.push(self.slice_call_price(j, 1.0)?);
         }
         Ok(out)
     }
 
     fn atm_calls_cached(&self) -> SanosResult<&[f64]> {
-        let res = self.cache.atm_calls.get_or_init(|| self.compute_atm_calls());
+        let res = self
+            .cache
+            .atm_calls
+            .get_or_init(|| self.compute_atm_calls());
         match res {
             Ok(values) => Ok(values.as_slice()),
             Err(err) => Err(err.clone()),

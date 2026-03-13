@@ -18,7 +18,10 @@ impl AtmMidPolicyConfig {
         match self {
             AtmMidPolicyConfig::NearestOrLinearLogMoneyness { tol_log } => {
                 if !tol_log.is_finite() {
-                    return Err(SanosError::NonFinite { field: "atm_policy.tol_log", value: tol_log });
+                    return Err(SanosError::NonFinite {
+                        field: "atm_policy.tol_log",
+                        value: tol_log,
+                    });
                 }
                 if tol_log < 0.0 {
                     return Err(SanosError::InvalidBound {
@@ -40,7 +43,7 @@ pub struct BsTimeChangedConfig {
     pub atm_policy: AtmMidPolicyConfig,
     pub var_floor: f64,
     pub enforce_non_decreasing: bool,
-    pub eta: f64
+    pub eta: f64,
 }
 
 impl Default for BsTimeChangedConfig {
@@ -57,7 +60,10 @@ impl Default for BsTimeChangedConfig {
 impl BsTimeChangedConfig {
     pub fn validate(&self) -> SanosResult<()> {
         if !self.var_floor.is_finite() {
-            return Err(SanosError::NonFinite { field: "bs_time_changed.var_floor", value: self.var_floor });
+            return Err(SanosError::NonFinite {
+                field: "bs_time_changed.var_floor",
+                value: self.var_floor,
+            });
         }
         if self.var_floor < 0.0 {
             return Err(SanosError::InvalidBound {
@@ -130,7 +136,9 @@ mod tests {
         };
         let err = cfg.validate().unwrap_err();
         match err {
-            SanosError::InvalidBound { field, .. } => assert_eq!(field, "bs_time_changed.var_floor"),
+            SanosError::InvalidBound { field, .. } => {
+                assert_eq!(field, "bs_time_changed.var_floor")
+            }
             _ => panic!("unexpected error variant: {err:?}"),
         }
     }

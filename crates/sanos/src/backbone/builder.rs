@@ -17,7 +17,9 @@ pub fn build_time_changed_lognormal_from_book(
     let atm_calls = book.atm_mids(atm_policy.as_ref())?;
 
     if atm_calls.is_empty() {
-        return Err(SanosError::EmptyCollection { what: "OptionBook.atm_mids" });
+        return Err(SanosError::EmptyCollection {
+            what: "OptionBook.atm_mids",
+        });
     }
 
     info!(
@@ -30,7 +32,10 @@ pub fn build_time_changed_lognormal_from_book(
     let mut knots: Vec<(f64, f64)> = Vec::with_capacity(atm_calls.len());
     for (t, c_atm) in atm_calls {
         if !t.is_finite() {
-            return Err(SanosError::NonFinite { field: "maturity", value: t });
+            return Err(SanosError::NonFinite {
+                field: "maturity",
+                value: t,
+            });
         }
         if t <= 0.0 {
             return Err(SanosError::InvalidBound {
@@ -49,15 +54,15 @@ pub fn build_time_changed_lognormal_from_book(
 
     if cfg.enforce_non_decreasing {
         let mut prev = knots[0].1;
-        for i in 1..knots.len() {
-            if knots[i].1 < prev {
+        for knot in knots.iter_mut().skip(1) {
+            if knot.1 < prev {
                 debug!(
                     "Clamping ATM total variance: T={} W_old={} W_new={}",
-                    knots[i].0, knots[i].1, prev
+                    knot.0, knot.1, prev
                 );
-                knots[i].1 = prev;
+                knot.1 = prev;
             } else {
-                prev = knots[i].1;
+                prev = knot.1;
             }
         }
     }

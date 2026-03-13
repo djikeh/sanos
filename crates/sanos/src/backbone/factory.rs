@@ -2,7 +2,7 @@ use crate::backbone::builder::build_time_changed_lognormal_from_book;
 use crate::backbone::config::BsTimeChangedConfig;
 use crate::backbone::y_model::YModel;
 use crate::error::SanosResult;
-use crate::market::OptionBook;
+use crate::market::{AtmMidPolicy, OptionBook};
 use std::sync::Arc;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -10,11 +10,24 @@ use std::sync::Arc;
 pub enum BackboneConfig {
     /// Black-Scholes backbone in the "lognormal time-changed" form.
     BsTimeChanged(BsTimeChangedConfig),
-
     // Future extensions:
     // NormalTimeChanged(...),
     // HestonApprox(...),
     // LocalVolDLV(...),
+}
+
+impl BackboneConfig {
+    pub fn build_atm_mid_policy(&self) -> SanosResult<Box<dyn AtmMidPolicy>> {
+        match self {
+            BackboneConfig::BsTimeChanged(bs_cfg) => bs_cfg.atm_policy.build(),
+        }
+    }
+
+    pub fn eta(&self) -> f64 {
+        match self {
+            BackboneConfig::BsTimeChanged(bs_cfg) => bs_cfg.eta,
+        }
+    }
 }
 
 pub fn build_backbone(book: &OptionBook, cfg: &BackboneConfig) -> SanosResult<Arc<dyn YModel>> {
@@ -103,7 +116,9 @@ mod tests {
 
         let err = build_backbone(&book, &cfg).unwrap_err();
         match err {
-            SanosError::InvalidBound { field, .. } => assert_eq!(field, "bs_time_changed.var_floor"),
+            SanosError::InvalidBound { field, .. } => {
+                assert_eq!(field, "bs_time_changed.var_floor")
+            }
             _ => panic!("unexpected error variant: {err:?}"),
         }
     }

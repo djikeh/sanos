@@ -72,11 +72,9 @@ fn snapshot_quantile_grid_includes_market_strikes_and_stays_bounded() {
     let backbone_cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default());
     let (_, total_variances) =
         build_backbone_with_total_variances(&book, &backbone_cfg).expect("backbone must build");
-    let atm_policy = match &backbone_cfg {
-        BackboneConfig::BsTimeChanged(bs_cfg) => {
-            bs_cfg.atm_policy.build().expect("ATM policy must build")
-        }
-    };
+    let atm_policy = backbone_cfg
+        .build_atm_mid_policy()
+        .expect("ATM policy must build");
     let grid_cfg = quantile_grid_config();
 
     let grids = build_strike_grids_with_variances(
