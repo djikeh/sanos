@@ -1,0 +1,33 @@
+{
+  "default_config": "tight_spread",
+  "fallback_configs": [
+    "sparse_robust",
+    "extreme_stress"
+  ],
+  "rules": [
+    {
+      "match": "strong_wings",
+      "configs": ["strong_wings", "tight_spread"]
+    },
+    {
+      "match": "steep_upward|inverted",
+      "configs": ["sparse_robust", "tight_spread", "extreme_stress"]
+    },
+    {
+      "match": "short_term_event",
+      "configs": ["zero_spread_vega", "extreme_stress", "tight_spread"]
+    },
+    {
+      "match": "twist",
+      "configs": ["sparse_robust", "tight_spread"]
+    },
+    {
+      "match": "high_vol.*long_end",
+      "configs": ["extreme_stress", "strong_wings"]
+    },
+    {
+      "match": "equity|fx|rates|weak_wings",
+      "configs": ["tight_spread", "zero_spread_vega"]
+    }
+  ]
+}

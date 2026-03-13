@@ -1,0 +1,25 @@
+{
+  "default_config": "tight_spread",
+  "fallback_configs": [
+    "sparse_robust",
+    "extreme_stress"
+  ],
+  "rules": [
+    {
+      "match": "low_smile_low_skew|short_term_event",
+      "configs": ["zero_spread_vega", "extreme_stress", "tight_spread"]
+    },
+    {
+      "match": "strong_wings",
+      "configs": ["strong_wings", "tight_spread", "sparse_robust"]
+    },
+    {
+      "match": "steep_upward|inverted_term|twist_in_time",
+      "configs": ["sparse_robust", "tight_spread", "extreme_stress"]
+    },
+    {
+      "match": "positive_skew|moderate_skew|strong_left_skew|symmetric_smile",
+      "configs": ["tight_spread", "zero_spread_vega"]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "default_config": "tight_spread",
+  "fallback_configs": [
+    "strong_wings",
+    "extreme_stress"
+  ],
+  "rules": [
+    {
+      "match": "strong_left_skew_dense|strong_wings",
+      "configs": ["strong_wings", "extreme_stress", "tight_spread"]
+    },
+    {
+      "match": "narrow|weak_wings|flat",
+      "configs": ["tight_spread", "zero_spread_vega"]
+    },
+    {
+      "match": "shifted.*event|shifted.*left",
+      "configs": ["zero_spread_vega", "extreme_stress", "sparse_robust"]
+    },
+    {
+      "match": "sparse_heterogeneous",
+      "configs": ["sparse_robust", "tight_spread", "extreme_stress"]
+    },
+    {
+      "match": "long_end.*stressed|high_vol",
+      "configs": ["extreme_stress", "strong_wings", "sparse_robust"]
+    },
+    {
+      "match": "dense.*custom|shifted.*right",
+      "configs": ["sparse_robust", "tight_spread"]
+    }
+  ]
+}
