@@ -2,6 +2,7 @@ mod builder;
 mod config;
 mod kernel_builder;
 mod kernels;
+pub(crate) mod regularization;
 mod solver;
 mod extract;
 mod initialization;
@@ -9,6 +10,7 @@ mod initialization;
 pub use config::{
     FitConfig, ConstraintConfig, InitPriceProxyConfig, InitializationConfig,
     KernelConfig, OmegaConfig, WarmStartMode,
+    RegularizationConfig, RegularizationMode, SmoothingOrder,
 };
 pub use kernels::{DenseMat, KernelC, KernelTransition, KernelSet};
 pub use kernel_builder::build_kernels;

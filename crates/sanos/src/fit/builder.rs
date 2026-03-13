@@ -8,6 +8,7 @@ use resopt::{
 use crate::error::{SanosError, SanosResult};
 use crate::fit::config::{FitConfig, QuoteWeightMode, QuoteWeightingConfig};
 use crate::fit::kernels::KernelSet;
+use crate::fit::regularization::build_tikhonov;
 use crate::market::{CallQuote, OptionBook};
 
 /// Maps the position of each q_j block within the concatenated decision vector x.
@@ -301,6 +302,11 @@ pub fn build_resopt_problem(
             }
         })?;
         builder = builder.add_inequalities(inequalities);
+    }
+
+    // --- Tikhonov regularization ---
+    if let Some(reg) = build_tikhonov(&cfg.regularization, &layout)? {
+        builder = builder.regularization(reg);
     }
 
     let problem = builder.build().map_err(|e| SanosError::External {

@@ -1,6 +1,83 @@
 use crate::error::{SanosError, SanosResult};
 use crate::market::CompletionConfig;
 
+/// Finite-difference order for smoothing regularization.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SmoothingOrder {
+    /// First-order differences: penalizes jumps in density.
+    #[default]
+    D1,
+    /// Second-order differences: penalizes changes in curvature.
+    D2,
+}
+
+/// Tikhonov regularization mode for the calibration problem.
+///
+/// Adds `lambda / 2 * ||L x - x_ref||_2^2` to the objective.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "mode"))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum RegularizationMode {
+    /// No regularization (default, backward-compatible).
+    #[default]
+    None,
+    /// Ridge: L = I, x_ref = 0.  Shrinks density toward zero.
+    Ridge,
+    /// Smoothing: L = block-diagonal finite-difference matrix, x_ref = 0.
+    /// Penalizes irregular densities.
+    Smoothing {
+        #[cfg_attr(feature = "serde", serde(default))]
+        order: SmoothingOrder,
+    },
+}
+
+/// Configuration for Tikhonov regularization.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegularizationConfig {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mode: RegularizationMode,
+    /// Regularization weight (lambda > 0).  Ignored when mode = None.
+    pub lambda: f64,
+}
+
+impl Default for RegularizationConfig {
+    fn default() -> Self {
+        Self {
+            mode: RegularizationMode::None,
+            lambda: 1e-4,
+        }
+    }
+}
+
+impl RegularizationConfig {
+    pub fn is_active(&self) -> bool {
+        self.mode != RegularizationMode::None
+    }
+
+    pub fn validate(&self) -> SanosResult<()> {
+        if !self.is_active() {
+            return Ok(());
+        }
+        if !self.lambda.is_finite() {
+            return Err(SanosError::NonFinite {
+                field: "regularization.lambda",
+                value: self.lambda,
+            });
+        }
+        if self.lambda <= 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "regularization.lambda",
+                value: self.lambda,
+                min: f64::MIN_POSITIVE,
+                max: f64::INFINITY,
+            });
+        }
+        Ok(())
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OmegaConfig {
@@ -190,6 +267,8 @@ pub struct FitConfig {
     pub initialization: InitializationConfig,
     #[cfg_attr(feature = "serde", serde(default))]
     pub weighting: QuoteWeightingConfig,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub regularization: RegularizationConfig,
 }
 
 impl FitConfig {
@@ -200,6 +279,7 @@ impl FitConfig {
     pub fn validate(&self) -> SanosResult<()> {
         self.initialization.validate()?;
         self.weighting.validate()?;
+        self.regularization.validate()?;
         Ok(())
     }
 }
