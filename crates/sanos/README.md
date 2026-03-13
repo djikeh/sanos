@@ -44,19 +44,19 @@ A clean equity-like skew fit.
 
 Price fit:
 
-![Equity-like price smile calibration](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/equity_like_smiles_fit.png)
+![Equity-like price smile calibration](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/equity_like_smiles_fit.png)
 
 IV fit:
 
-![Equity-like IV smile calibration](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/equity_like_smiles_iv_fit.png)
+![Equity-like IV smile calibration](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/equity_like_smiles_iv_fit.png)
 
 Density:
 
-![Equity-like density comparison](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/equity_like_density_comparison.png)
+![Equity-like density comparison](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/equity_like_density_comparison.png)
 
 Performance summary:
 
-![Equity-like quality summary](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/equity_like_quality_summary.png)
+![Equity-like quality summary](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/equity_like_quality_summary.png)
 
 ### `svi_raw_catalog_06_shifted_smile_center_right_long_end_focus` with `strong_wings`
 
@@ -64,19 +64,19 @@ A shifted smile with long-end structure.
 
 Price fit:
 
-![Shifted long-end price smile calibration](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/shifted_long_end_smiles_fit.png)
+![Shifted long-end price smile calibration](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/shifted_long_end_smiles_fit.png)
 
 IV fit:
 
-![Shifted long-end IV smile calibration](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/shifted_long_end_smiles_iv_fit.png)
+![Shifted long-end IV smile calibration](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/shifted_long_end_smiles_iv_fit.png)
 
 Density:
 
-![Shifted long-end density comparison](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/shifted_long_end_density_comparison.png)
+![Shifted long-end density comparison](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/shifted_long_end_density_comparison.png)
 
 Performance summary:
 
-![Shifted long-end quality summary](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/shifted_long_end_quality_summary.png)
+![Shifted long-end quality summary](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/shifted_long_end_quality_summary.png)
 
 ### `tv_catalog_07_inverted_term_structure` with `tight_spread`
 
@@ -84,19 +84,19 @@ An inverted term-structure example with a clean global fit.
 
 Price fit:
 
-![Inverted term-structure price smile calibration](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/inverted_term_smiles_fit.png)
+![Inverted term-structure price smile calibration](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/inverted_term_smiles_fit.png)
 
 IV fit:
 
-![Inverted term-structure IV smile calibration](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/inverted_term_smiles_iv_fit.png)
+![Inverted term-structure IV smile calibration](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/inverted_term_smiles_iv_fit.png)
 
 Density:
 
-![Inverted term-structure density comparison](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/inverted_term_density_comparison.png)
+![Inverted term-structure density comparison](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/inverted_term_density_comparison.png)
 
 Performance summary:
 
-![Inverted term-structure quality summary](https://raw.githubusercontent.com/djikeh/sanos/main/crates/sanos/docs/assets/inverted_term_quality_summary.png)
+![Inverted term-structure quality summary](https://raw.githubusercontent.com/djikeh/sanos/master/crates/sanos/docs/assets/inverted_term_quality_summary.png)
 
 ## Installation
 

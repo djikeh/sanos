@@ -5,6 +5,13 @@ All notable changes to the public `sanos` crate will be documented in this file.
 The format is inspired by Keep a Changelog and the project follows SemVer for the
 published crate API.
 
+## [0.2.1] - 2026-03-13
+
+### Fixed
+
+- README image URLs now point to the correct `master` branch on GitHub, fixing
+  broken images on crates.io.
+
 ## [0.2.0] - 2026-03-13
 
 ### Added
