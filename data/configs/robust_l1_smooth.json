@@ -37,17 +37,11 @@
     "kernel": {
       "omega": "Zero"
     },
-    "objective": {
-      "L1Mid": {
-        "weight": 1.0
-      }
-    },
-    "lp": {
+    "constraints": {
       "enforce_simplex": true,
       "enforce_nonnegativity": true,
       "include_time_constraints": true
     },
-    "solver": "Microlp",
     "initialization": {
       "mode": "None",
       "price_proxy": "Mid",

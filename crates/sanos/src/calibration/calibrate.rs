@@ -3,10 +3,7 @@ use std::sync::Arc;
 use crate::backbone::{build_backbone_with_total_variances, BackboneConfig, YModel};
 use crate::density::{DensityTolerances, MarginalDensity, MartingaleDensity};
 use crate::error::SanosResult;
-use crate::fit::lp::builder::{LpBuilder, SanosLpBuilder};
-use crate::fit::{
-    add_martingale_density_warm_start, build_kernels, solve, WarmStartMode,
-};
+use crate::fit::{build_kernels, solve, WarmStartMode};
 use crate::grid::{build_strike_grids_with_variances, StrikeGrid};
 use crate::market::{complete_slice_remark_2_8, CompletionConfig, OptionBook};
 use crate::surface::SanosSurface;
@@ -47,33 +44,22 @@ pub fn calibrate_with_stats(
 
     // Practical completion (Remark 2.8) is used only for BackboneSynthetic warm-start.
     // K0=0 is used only in completion algebra and is not inserted in model grids.
-    let mut completed_warm_start: Option<MartingaleDensity> = None;
     if cfg.fit.initialization.mode == WarmStartMode::BackboneSynthetic {
         let completion_cfg = &cfg.fit.initialization.market_completion;
-        let (completed_grids, completed_density) = build_completed_grids_and_warm_start(
+        let (completed_grids, _completed_density) = build_completed_grids_and_warm_start(
             &grids,
             &y,
             completion_cfg,
             cfg.fit.initialization.feasibility_tol,
         )?;
         grids = completed_grids;
-        completed_warm_start = Some(completed_density);
     }
 
     // 3) kernels
     let kernels = build_kernels(book, &grids, &y, &cfg.fit.kernel)?;
 
-    // 4) LP build
-    let lp_builder = SanosLpBuilder;
-    let mut built_lp = lp_builder.build(book, &kernels, &cfg.fit)?;
-
-    // 5) optional warm-start density
-    if let Some(warm_start) = completed_warm_start.as_ref() {
-        add_martingale_density_warm_start(&mut built_lp.model, &built_lp.layout, warm_start)?;
-    }
-
-    // 6) solve LP and 7) extract martingale density + objective value
-    let solved = solve(&built_lp.model, &built_lp.layout, &kernels, &cfg.fit.solver)?;
+    // 4) solve with resopt
+    let solved = solve(book, &kernels, &cfg.fit)?;
     let q = solved.density;
     let objective_value = solved.objective_value;
 
@@ -92,7 +78,7 @@ pub fn calibrate_with_stats(
         },
     }
 
-    // 8) time interpolator
+    // 5) time interpolator
     let interp = cfg.time_interp.build()?;
 
     Ok(CalibrationResult {

@@ -37,18 +37,11 @@
     "kernel": {
       "omega": "Zero"
     },
-    "objective": {
-      "HingeBidAsk": {
-        "slack_penalty": 50.0,
-        "epsilon_inside": 1.0
-      }
-    },
-    "lp": {
+    "constraints": {
       "enforce_simplex": true,
       "enforce_nonnegativity": true,
       "include_time_constraints": true
     },
-    "solver": "Microlp",
     "initialization": {
       "mode": "None",
       "price_proxy": "Mid",

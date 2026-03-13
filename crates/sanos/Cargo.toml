@@ -13,12 +13,7 @@ keywords = ["options", "volatility", "arbitrage", "calibration", "quant"]
 categories = ["science", "mathematics"]
 
 [features]
-# Start pragmatic: pure-Rust LP backend by default + Jaeckel for implied vol.
-default = ["lp-microlp", "iv-jaeckel"]
-
-# LP backends (via good_lp)
-lp-cbc = ["dep:good_lp", "good_lp/lp-solvers"]
-lp-microlp = ["dep:good_lp", "good_lp/microlp"]
+default = ["iv-jaeckel"]
 
 # Implied vol
 iv-jaeckel = ["dep:jaeckel"]
@@ -27,14 +22,11 @@ iv-jaeckel = ["dep:jaeckel"]
 serde = ["dep:serde"]
 
 [dependencies]
-#thiserror = "2"
 log = "0.4"
-
-# Optional deps via features
-good_lp = { version = "1", optional = true, default-features = false }
+resopt = "0.1.0"
+statrs = "0.18.0"
 jaeckel = { version = "0.2.0", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
-statrs = "0.18.0"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
