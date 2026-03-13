@@ -1,12 +1,15 @@
+use std::f64::consts::TAU;
+
 use resopt::{
     Bounds, ConstrainedResidualProblem, ConstrainedResidualProblemBuilder,
     LinearEqualities, LinearInequalities, Loss, Matrix,
 };
 
+use crate::backbone::bs::bs_implied_vol_from_call;
 use crate::error::{SanosError, SanosResult};
-use crate::fit::config::FitConfig;
+use crate::fit::config::{FitConfig, QuoteWeightMode, QuoteWeightingConfig};
 use crate::fit::kernels::KernelSet;
-use crate::market::OptionBook;
+use crate::market::{CallQuote, OptionBook};
 
 /// Maps the position of each q_j block within the concatenated decision vector x.
 #[derive(Debug, Clone)]
@@ -19,10 +22,41 @@ pub struct QLayout {
     pub total: usize,
 }
 
-/// Weighted quote weight: w = quote.weight / (ask - bid), clamped away from zero.
-fn paper_quote_weight(bid: f64, ask: f64, weight: f64) -> f64 {
-    let spread = (ask - bid).max(1e-12);
-    weight / spread
+fn norm_pdf(x: f64) -> f64 {
+    (-0.5 * x * x).exp() / TAU.sqrt()
+}
+
+fn quote_spread(quote: &CallQuote, cfg: &QuoteWeightingConfig) -> f64 {
+    (quote.ask - quote.bid).max(cfg.spread_floor)
+}
+
+fn quote_vega(quote: &CallQuote, maturity: f64, cfg: &QuoteWeightingConfig) -> f64 {
+    let mid = quote.mid();
+    let implied_vol = match bs_implied_vol_from_call(mid, 1.0, quote.k, maturity) {
+        Ok(vol) if vol.is_finite() && vol > 0.0 => vol,
+        _ => return cfg.vega_floor,
+    };
+
+    let sqrt_t = maturity.sqrt();
+    let total_variance = implied_vol * implied_vol * maturity;
+    let sqrt_var = total_variance.sqrt();
+    if !sqrt_var.is_finite() || sqrt_var <= 0.0 {
+        return cfg.vega_floor;
+    }
+
+    let d1 = (-quote.k.ln() + 0.5 * total_variance) / sqrt_var;
+    (sqrt_t * norm_pdf(d1)).max(cfg.vega_floor)
+}
+
+fn quote_weight(quote: &CallQuote, maturity: f64, cfg: &QuoteWeightingConfig) -> f64 {
+    let base = match cfg.mode {
+        QuoteWeightMode::Identity => 1.0,
+        QuoteWeightMode::BidAskSpread => 1.0 / quote_spread(quote, cfg),
+        QuoteWeightMode::Vega => quote_vega(quote, maturity, cfg),
+        QuoteWeightMode::BidAskVega => quote_vega(quote, maturity, cfg) / quote_spread(quote, cfg),
+    };
+
+    quote.weight * base
 }
 
 /// Build the resopt constrained residual optimization problem from market data and kernels.
@@ -91,7 +125,7 @@ pub fn build_resopt_problem(
         }
 
         for (r, quote) in quotes.iter().enumerate() {
-            let w = paper_quote_weight(quote.bid, quote.ask, quote.weight);
+            let w = quote_weight(quote, chain.maturity(), &cfg.weighting);
             let mid = quote.mid();
 
             // Fill row of A (weighted): W * C_j
@@ -369,5 +403,50 @@ mod tests {
         for j in 0..layout.sizes.len() {
             assert_eq!(layout.offsets[j], layout.sizes[..j].iter().sum::<usize>());
         }
+    }
+
+    #[test]
+    fn identity_weight_ignores_spread_and_vega() {
+        let quote = CallQuote::new(1.0, 0.2, 0.3, 2.0).unwrap();
+        let cfg = QuoteWeightingConfig {
+            mode: QuoteWeightMode::Identity,
+            ..QuoteWeightingConfig::default()
+        };
+
+        assert!((quote_weight(&quote, 1.0, &cfg) - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn bid_ask_weight_uses_inverse_spread() {
+        let quote = CallQuote::new(1.0, 0.2, 0.25, 3.0).unwrap();
+        let cfg = QuoteWeightingConfig {
+            mode: QuoteWeightMode::BidAskSpread,
+            ..QuoteWeightingConfig::default()
+        };
+
+        assert!((quote_weight(&quote, 1.0, &cfg) - 60.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn vega_based_weights_are_positive() {
+        let maturity = 1.0;
+        let sigma = 0.2;
+        let mid = bs_call_forward_norm(1.0, sigma * sigma * maturity).unwrap();
+        let quote = CallQuote::new(1.0, mid - 0.01, mid + 0.01, 1.0).unwrap();
+
+        let vega_cfg = QuoteWeightingConfig {
+            mode: QuoteWeightMode::Vega,
+            ..QuoteWeightingConfig::default()
+        };
+        let combo_cfg = QuoteWeightingConfig {
+            mode: QuoteWeightMode::BidAskVega,
+            ..QuoteWeightingConfig::default()
+        };
+
+        let vega_weight = quote_weight(&quote, maturity, &vega_cfg);
+        let combo_weight = quote_weight(&quote, maturity, &combo_cfg);
+
+        assert!(vega_weight > 0.0);
+        assert!(combo_weight > vega_weight);
     }
 }

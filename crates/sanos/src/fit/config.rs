@@ -111,12 +111,85 @@ impl InitializationConfig {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QuoteWeightMode {
+    /// Equal weighting for all quotes, up to the per-quote `weight` multiplier.
+    Identity,
+    /// Paper-style weighting: inverse bid/ask spread.
+    #[default]
+    BidAskSpread,
+    /// Black vega weighting computed from the quote mid.
+    Vega,
+    /// Combined vega/spread weighting.
+    BidAskVega,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuoteWeightingConfig {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mode: QuoteWeightMode,
+    /// Lower bound for the bid/ask spread used in weight calculations.
+    pub spread_floor: f64,
+    /// Lower bound for Black vega used in weight calculations.
+    pub vega_floor: f64,
+}
+
+impl Default for QuoteWeightingConfig {
+    fn default() -> Self {
+        Self {
+            mode: QuoteWeightMode::default(),
+            spread_floor: 1e-12,
+            vega_floor: 1e-12,
+        }
+    }
+}
+
+impl QuoteWeightingConfig {
+    pub fn validate(&self) -> SanosResult<()> {
+        if !self.spread_floor.is_finite() {
+            return Err(SanosError::NonFinite {
+                field: "weighting.spread_floor",
+                value: self.spread_floor,
+            });
+        }
+        if self.spread_floor <= 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "weighting.spread_floor",
+                value: self.spread_floor,
+                min: f64::MIN_POSITIVE,
+                max: f64::INFINITY,
+            });
+        }
+
+        if !self.vega_floor.is_finite() {
+            return Err(SanosError::NonFinite {
+                field: "weighting.vega_floor",
+                value: self.vega_floor,
+            });
+        }
+        if self.vega_floor <= 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "weighting.vega_floor",
+                value: self.vega_floor,
+                min: f64::MIN_POSITIVE,
+                max: f64::INFINITY,
+            });
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct FitConfig {
     pub kernel: KernelConfig,
     pub constraints: ConstraintConfig,
     #[cfg_attr(feature = "serde", serde(default))]
     pub initialization: InitializationConfig,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub weighting: QuoteWeightingConfig,
 }
 
 impl FitConfig {
@@ -126,6 +199,7 @@ impl FitConfig {
 
     pub fn validate(&self) -> SanosResult<()> {
         self.initialization.validate()?;
+        self.weighting.validate()?;
         Ok(())
     }
 }
@@ -138,5 +212,26 @@ mod tests {
     fn fit_config_default_validates() {
         let cfg = FitConfig::default();
         assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn weighting_defaults_match_legacy_behavior() {
+        let cfg = FitConfig::default();
+        assert_eq!(cfg.weighting.mode, QuoteWeightMode::BidAskSpread);
+        assert_eq!(cfg.weighting.spread_floor, 1e-12);
+        assert_eq!(cfg.weighting.vega_floor, 1e-12);
+    }
+
+    #[test]
+    fn invalid_weighting_floor_is_rejected() {
+        let mut cfg = FitConfig::default();
+        cfg.weighting.vega_floor = 0.0;
+        assert!(matches!(
+            cfg.validate(),
+            Err(SanosError::InvalidBound {
+                field: "weighting.vega_floor",
+                ..
+            })
+        ));
     }
 }
