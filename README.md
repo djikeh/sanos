@@ -1,6 +1,114 @@
 # sanos
 
-Minimal workspace to calibrate SANOS surfaces from IV snapshots.
+Smooth, arbitrage-aware option surface calibration for Rust.
+
+The public crate is [`sanos`](https://crates.io/crates/sanos). This repository also
+contains the surrounding workspace tooling used to run calibrations, export surfaces,
+and generate diagnostics.
+
+## Release 0.2.0 highlights
+
+- richer crate documentation with calibration galleries
+- examples showing price fit, IV fit, density, and quality diagnostics
+- benchmark-backed showcase examples from multiple market regimes
+- reproducible release workflow for crates.io publication
+
+## Why Rust users may care
+
+`sanos` is designed for developers who want a native Rust surface-calibration engine:
+
+- validated option market data types
+- high-level calibration entry points
+- queryable calibrated surfaces
+- explicit no-arbitrage diagnostics
+- optional serialization support
+
+## Calibration gallery
+
+Selection driven by the latest benchmark results:
+- best `excellent` positive-spread case
+- best `acceptable` case outside `tight_spread`
+- best `excellent` term-structure case
+
+### `sabr_catalog_02_equity_like_moderate_skew` with `tight_spread`
+
+Price fit:
+
+![Equity-like price smile calibration](crates/sanos/docs/assets/equity_like_smiles_fit.png)
+
+IV fit:
+
+![Equity-like IV smile calibration](crates/sanos/docs/assets/equity_like_smiles_iv_fit.png)
+
+Density:
+
+![Equity-like density comparison](crates/sanos/docs/assets/equity_like_density_comparison.png)
+
+Performance summary:
+
+![Equity-like quality summary](crates/sanos/docs/assets/equity_like_quality_summary.png)
+
+### `svi_raw_catalog_06_shifted_smile_center_right_long_end_focus` with `strong_wings`
+
+Price fit:
+
+![Shifted long-end price smile calibration](crates/sanos/docs/assets/shifted_long_end_smiles_fit.png)
+
+IV fit:
+
+![Shifted long-end IV smile calibration](crates/sanos/docs/assets/shifted_long_end_smiles_iv_fit.png)
+
+Density:
+
+![Shifted long-end density comparison](crates/sanos/docs/assets/shifted_long_end_density_comparison.png)
+
+Performance summary:
+
+![Shifted long-end quality summary](crates/sanos/docs/assets/shifted_long_end_quality_summary.png)
+
+### `tv_catalog_07_inverted_term_structure` with `tight_spread`
+
+Price fit:
+
+![Inverted term-structure price smile calibration](crates/sanos/docs/assets/inverted_term_smiles_fit.png)
+
+IV fit:
+
+![Inverted term-structure IV smile calibration](crates/sanos/docs/assets/inverted_term_smiles_iv_fit.png)
+
+Density:
+
+![Inverted term-structure density comparison](crates/sanos/docs/assets/inverted_term_density_comparison.png)
+
+Performance summary:
+
+![Inverted term-structure quality summary](crates/sanos/docs/assets/inverted_term_quality_summary.png)
+
+## Current benchmark snapshot study
+
+The current benchmark study reports:
+
+- 30 snapshots analyzed
+- 5 zero-spread snapshots
+- 0 real failures
+- 9 fragile stress cases still useful for tuning
+
+Best config counts from the latest benchmark run:
+
+| Config | Best snapshots |
+|---|---:|
+| `tight_spread` | 16 |
+| `sparse_robust` | 6 |
+| `strong_wings` | 4 |
+| `extreme_stress` | 2 |
+| `zero_spread_vega` | 2 |
+
+## Install the crate
+
+```toml
+[dependencies]
+sanos = "0.2"
+```
 
 ## Rust CLI
 

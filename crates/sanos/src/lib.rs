@@ -1,10 +1,4 @@
-//! Core SANOS calibration library.
-//!
-//! Public API is exposed through high-level modules (`market`, `calibration`,
-//! `surface`, `backbone`, `fit`, `grid`, `interp`, `density`, `term`) and
-//! through `prelude`.
-//! Internal submodules are kept private to avoid locking unstable internals in
-//! semver for the first public releases.
+#![doc = include_str!("../README.md")]
 
 pub mod error;
 pub mod market;
