@@ -12,7 +12,7 @@ use sanos::calibration::{
     calibrate_with_stats, CalibrationConfig, CalibrationRunStats, ConvexOrderValidationMode,
 };
 use sanos::density::DensityTolerances;
-use sanos::fit::{FitConfig, LpSolverConfig, ObjectiveConfig, WarmStartMode};
+use sanos::fit::{FitConfig, WarmStartMode};
 use sanos::grid::StrikeGridPolicyConfig;
 use sanos::interp::TimeInterpConfig;
 use sanos::market::OptionBook;
@@ -116,6 +116,7 @@ struct SurfaceReconstructionJson {
 struct ReconstructionBackboneJson {
     model: String,
     eta: f64,
+    effective_var_floor: f64,
     var_curve_knots: Vec<VarianceKnotJson>,
 }
 
@@ -387,22 +388,18 @@ fn main() -> Result<()> {
 }
 
 fn default_calibration_config() -> CalibrationConfig {
-    let mut fit = FitConfig::default();
-    fit.objective = ObjectiveConfig::HardBidAsk;
-    fit.solver = LpSolverConfig::Microlp;
-
     CalibrationConfig {
         backbone: BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default()),
         grid: StrikeGridPolicyConfig::default(),
-        fit,
+        fit: FitConfig::default(),
         time_interp: TimeInterpConfig::default(),
         convex_order_validation: ConvexOrderValidationMode::Error,
     }
 }
 
 fn build_report(
-    snapshot: &PathBuf,
-    config: &PathBuf,
+    snapshot: &Path,
+    config: &Path,
     surface: &sanos::surface::SanosSurface,
 ) -> Result<CalibrationReport> {
     let marginals: Vec<MarginalReport> = surface
@@ -1078,6 +1075,7 @@ fn build_reconstruction_json(
             ReconstructionBackboneJson {
                 model: "bs_time_changed_lognormal".to_string(),
                 eta: model.var_scale(),
+                effective_var_floor: model.effective_var_floor(),
                 var_curve_knots,
             }
         }
@@ -1206,10 +1204,11 @@ mod tests {
     }
 
     #[test]
-    fn default_calibration_config_uses_hard_bid_ask_microlp() {
+    fn default_calibration_config_validates() {
         let cfg = default_calibration_config();
-        assert_eq!(cfg.fit.objective, ObjectiveConfig::HardBidAsk);
-        assert_eq!(cfg.fit.solver, LpSolverConfig::Microlp);
+        cfg.fit
+            .validate()
+            .expect("default fit config must validate");
     }
 
     #[test]

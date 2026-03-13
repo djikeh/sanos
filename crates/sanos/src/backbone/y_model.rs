@@ -26,15 +26,17 @@ pub struct SanityReport {
 /// - a > 0
 /// - b >= 0
 pub trait YModel: Send + Sync + Debug {
-
     /// Kernel call: E[(a Y_T - b)^+]
     fn call(&self, maturity: f64, a: f64, b: f64) -> SanosResult<f64>;
 
-    /// A simple linear model for null volatility and sanity checks: 
+    /// A simple linear model for null volatility and sanity checks:
     /// Y_T = 1 deterministically, so call(T, a, b) = (a - b)^+
     fn linear_call(&self, maturity: f64, a: f64, b: f64) -> SanosResult<f64> {
         if !maturity.is_finite() {
-            return Err(SanosError::NonFinite { field: "maturity", value: maturity });
+            return Err(SanosError::NonFinite {
+                field: "maturity",
+                value: maturity,
+            });
         }
         if maturity <= 0.0 {
             return Err(SanosError::InvalidBound {
@@ -45,10 +47,16 @@ pub trait YModel: Send + Sync + Debug {
             });
         }
         if !a.is_finite() {
-            return Err(SanosError::NonFinite { field: "a", value: a });
+            return Err(SanosError::NonFinite {
+                field: "a",
+                value: a,
+            });
         }
         if !b.is_finite() {
-            return Err(SanosError::NonFinite { field: "b", value: b });
+            return Err(SanosError::NonFinite {
+                field: "b",
+                value: b,
+            });
         }
         if a <= 0.0 {
             return Err(SanosError::InvalidBound {
@@ -66,7 +74,7 @@ pub trait YModel: Send + Sync + Debug {
                 max: f64::INFINITY,
             });
         }
-        
+
         Ok((a - b).max(0.0))
     }
 
@@ -86,30 +94,33 @@ pub trait YModel: Send + Sync + Debug {
 
         let mut reports = Vec::with_capacity(cases.len());
         for &case in cases {
-            let v = self.call(case.maturity, case.a, case.b)?;
+            let kernel_value = self.call(case.maturity, case.a, case.b)?;
             let mut issues: Vec<&'static str> = Vec::new();
 
             // Basic finiteness
-            if !v.is_finite() {
+            if !kernel_value.is_finite() {
                 issues.push("non_finite_value");
             }
 
             // Bounds: 0 <= call <= a (since Y is positive with E[Y]=1)
-            if v < -tol {
+            if kernel_value < -tol {
                 issues.push("below_zero");
             }
-            if v > case.a + tol {
+            if kernel_value > case.a + tol {
                 issues.push("above_a");
             }
 
             // Unit mean check: call(T, a, 0) should be ~ a (because (aY)^+ = aY and E[Y]=1)
-            if case.b == 0.0 {
-                if (v - case.a).abs() > tol.max(tol * case.a.abs().max(1.0)) {
-                    issues.push("unit_mean_violation");
-                }
+            if case.b == 0.0 && (kernel_value - case.a).abs() > tol.max(tol * case.a.abs().max(1.0))
+            {
+                issues.push("unit_mean_violation");
             }
 
-            reports.push(SanityReport { case, value: v, issues });
+            reports.push(SanityReport {
+                case,
+                value: kernel_value,
+                issues,
+            });
         }
 
         Ok(reports)

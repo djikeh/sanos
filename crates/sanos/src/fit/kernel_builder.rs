@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use log::debug;
+use std::sync::Arc;
 
 use crate::backbone::YModel;
 use crate::error::{SanosError, SanosResult};
@@ -57,7 +57,9 @@ fn build_transition_mats(
     Ok((u, r))
 }
 
-fn primary_and_secondary_kinds(omega: OmegaConfig) -> (ConstraintKernelKind, Option<ConstraintKernelKind>) {
+fn primary_and_secondary_kinds(
+    omega: OmegaConfig,
+) -> (ConstraintKernelKind, Option<ConstraintKernelKind>) {
     match omega {
         OmegaConfig::Zero => (ConstraintKernelKind::Zero, None),
         OmegaConfig::One => (ConstraintKernelKind::One, None),
@@ -68,9 +70,9 @@ fn primary_and_secondary_kinds(omega: OmegaConfig) -> (ConstraintKernelKind, Opt
 /// Build SANOS kernel blocks from book, strike grids, and backbone.
 ///
 /// - C_j uses `y.call` (market fit kernel).
-/// - U/R transitions use ω-switch:
-///     ω=0 -> `linear_call`
-///     ω=1 -> `call`
+/// - U/R transitions use the `omega` switch:
+///   `omega = Zero` -> `linear_call`
+///   `omega = One` -> `call`
 pub fn build_kernels(
     book: &OptionBook,
     grids: &[StrikeGrid],
@@ -78,7 +80,9 @@ pub fn build_kernels(
     cfg: &KernelConfig,
 ) -> SanosResult<KernelSet> {
     if grids.len() != book.len() {
-        return Err(SanosError::InvalidOrdering { msg: "grids.len() must match book.len()" });
+        return Err(SanosError::InvalidOrdering {
+            msg: "grids.len() must match book.len()",
+        });
     }
 
     let (primary_kind, secondary_kind) = primary_and_secondary_kinds(cfg.omega);
@@ -92,7 +96,9 @@ pub fn build_kernels(
 
         // You can relax this later if needed.
         if grid.maturity() != maturity {
-            return Err(SanosError::InvalidOrdering { msg: "grid maturity must equal chain maturity" });
+            return Err(SanosError::InvalidOrdering {
+                msg: "grid maturity must equal chain maturity",
+            });
         }
 
         let market_strikes: Vec<f64> = chain.quotes().iter().map(|q| q.k).collect();
@@ -102,7 +108,9 @@ pub fn build_kernels(
         let n_mod = model_strikes.len();
 
         if n_mkt == 0 || n_mod == 0 {
-            return Err(SanosError::EmptyCollection { what: "market/model strikes" });
+            return Err(SanosError::EmptyCollection {
+                what: "market/model strikes",
+            });
         }
 
         // C_j: n_mkt x n_mod
@@ -116,7 +124,12 @@ pub fn build_kernels(
 
         debug!("Built C kernel j={j}, T={maturity}, n_mkt={n_mkt}, n_mod={n_mod}");
         let cmat = DenseMat::new(n_mkt, n_mod, c_data)?;
-        c_out.push(KernelC { maturity, market_strikes, model_strikes, c: cmat });
+        c_out.push(KernelC {
+            maturity,
+            market_strikes,
+            model_strikes,
+            c: cmat,
+        });
 
         // Transitions (U/R) for j>=1
         if j >= 1 {
@@ -157,7 +170,10 @@ pub fn build_kernels(
         }
     }
 
-    let ks = KernelSet { c: c_out, transitions: t_out };
+    let ks = KernelSet {
+        c: c_out,
+        transitions: t_out,
+    };
     ks.validate()?;
     Ok(ks)
 }

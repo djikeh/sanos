@@ -1,13 +1,10 @@
 use sanos::backbone::bs_call_forward_norm;
 use sanos::backbone::{build_backbone_with_total_variances, BackboneConfig, BsTimeChangedConfig};
-#[cfg(feature = "lp-microlp")]
 use sanos::calibration::{calibrate, CalibrationConfig, ConvexOrderValidationMode};
-#[cfg(feature = "lp-microlp")]
-use sanos::fit::{FitConfig, LpSolverConfig};
+use sanos::fit::FitConfig;
 use sanos::grid::{
     build_strike_grids_with_variances, LogMoneynessQuantilesGridConfig, StrikeGridPolicyConfig,
 };
-#[cfg(feature = "lp-microlp")]
 use sanos::interp::TimeInterpConfig;
 use sanos::market::{CallQuote, OptionBook, OptionChain};
 
@@ -75,11 +72,9 @@ fn snapshot_quantile_grid_includes_market_strikes_and_stays_bounded() {
     let backbone_cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig::default());
     let (_, total_variances) =
         build_backbone_with_total_variances(&book, &backbone_cfg).expect("backbone must build");
-    let atm_policy = match &backbone_cfg {
-        BackboneConfig::BsTimeChanged(bs_cfg) => {
-            bs_cfg.atm_policy.build().expect("ATM policy must build")
-        }
-    };
+    let atm_policy = backbone_cfg
+        .build_atm_mid_policy()
+        .expect("ATM policy must build");
     let grid_cfg = quantile_grid_config();
 
     let grids = build_strike_grids_with_variances(
@@ -111,12 +106,10 @@ fn snapshot_quantile_grid_includes_market_strikes_and_stays_bounded() {
     }
 }
 
-#[cfg(feature = "lp-microlp")]
 #[test]
 fn calibrate_runs_with_log_moneyness_quantiles_grid_policy() {
     let book = load_book_from_snapshot();
-    let mut fit = FitConfig::default();
-    fit.solver = LpSolverConfig::Microlp;
+    let fit = FitConfig::default();
 
     let candidates = [
         LogMoneynessQuantilesGridConfig {

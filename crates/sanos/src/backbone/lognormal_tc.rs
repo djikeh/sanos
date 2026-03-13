@@ -8,21 +8,38 @@ use crate::term::PiecewiseLinearCurve;
 ///     Y_T = exp(B_{v(T)} - 0.5 v(T))
 ///
 /// Kernel:
-///     E[(a Y_T - b)^+] = a * BSCall(F=1, K=b/a, var=v(T))
+///     E[(a Y_T - b)^+] = a * BSCall(F=1, K=b/a, var=v_eff(T))
+///
+/// where `v_eff(T) = max(eta * W(T), effective_var_floor)`.
 #[derive(Debug, Clone)]
 pub struct TimeChangedLognormal {
     var_curve: PiecewiseLinearCurve,
     var_scale: f64,
+    effective_var_floor: f64,
 }
 
 impl TimeChangedLognormal {
     pub fn new(var_curve: PiecewiseLinearCurve, var_scale: f64) -> Self {
-        Self { var_curve, var_scale }
+        Self {
+            var_curve,
+            var_scale,
+            effective_var_floor: 0.0,
+        }
+    }
+
+    pub fn with_effective_var_floor(mut self, floor: f64) -> Self {
+        self.effective_var_floor = floor;
+        self
     }
 
     #[inline]
     pub fn var_scale(&self) -> f64 {
         self.var_scale
+    }
+
+    #[inline]
+    pub fn effective_var_floor(&self) -> f64 {
+        self.effective_var_floor
     }
 
     #[inline]
@@ -46,7 +63,10 @@ impl TimeChangedLognormal {
 
     fn call_eta(&self, maturity: f64, a: f64, b: f64, eta: f64) -> SanosResult<f64> {
         if !maturity.is_finite() {
-            return Err(SanosError::NonFinite { field: "maturity", value: maturity });
+            return Err(SanosError::NonFinite {
+                field: "maturity",
+                value: maturity,
+            });
         }
         if maturity <= 0.0 {
             return Err(SanosError::InvalidBound {
@@ -57,13 +77,22 @@ impl TimeChangedLognormal {
             });
         }
         if !a.is_finite() {
-            return Err(SanosError::NonFinite { field: "a", value: a });
+            return Err(SanosError::NonFinite {
+                field: "a",
+                value: a,
+            });
         }
         if !b.is_finite() {
-            return Err(SanosError::NonFinite { field: "b", value: b });
+            return Err(SanosError::NonFinite {
+                field: "b",
+                value: b,
+            });
         }
         if !eta.is_finite() {
-            return Err(SanosError::NonFinite { field: "eta", value: eta });
+            return Err(SanosError::NonFinite {
+                field: "eta",
+                value: eta,
+            });
         }
         if a <= 0.0 {
             return Err(SanosError::InvalidBound {
@@ -82,11 +111,16 @@ impl TimeChangedLognormal {
             });
         }
         if eta < 0.0 {
-            return Err(SanosError::InvalidBound { field: "eta", value: eta, min: 0.0, max: f64::INFINITY, });
+            return Err(SanosError::InvalidBound {
+                field: "eta",
+                value: eta,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
         }
 
         let v = self.var(maturity)?;
-        let v = v * eta;
+        let v = (v * eta).max(self.effective_var_floor);
         let k = b / a;
 
         // If b == 0, then k = 0. But bs_call_forward_norm requires k>0.

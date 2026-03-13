@@ -12,6 +12,20 @@ const UNIQUE_TOL: f64 = 1e-12;
 const TINY_SIGMA: f64 = 1e-10;
 const TINY_WINDOW_HALF_WIDTH: f64 = 0.05;
 
+#[derive(Debug, Clone, Copy)]
+struct QuantileShape {
+    left_tail_alpha: f64,
+    right_tail_alpha: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LogMoneynessMapping {
+    mean: f64,
+    volatility: f64,
+    min_log_moneyness: f64,
+    max_log_moneyness: f64,
+}
+
 pub trait StrikeGridPolicy: Send + Sync {
     fn build(
         &self,
@@ -104,12 +118,12 @@ impl StrikeGridPolicy for MarketAnchored {
             let t = chain.maturity();
             let market_strikes: Vec<f64> = chain.quotes().iter().map(|q| q.k).collect();
 
-            let k_min = *market_strikes
-                .first()
-                .ok_or(SanosError::EmptyCollection { what: "market strikes" })?;
-            let k_max = *market_strikes
-                .last()
-                .ok_or(SanosError::EmptyCollection { what: "market strikes" })?;
+            let k_min = *market_strikes.first().ok_or(SanosError::EmptyCollection {
+                what: "market strikes",
+            })?;
+            let k_max = *market_strikes.last().ok_or(SanosError::EmptyCollection {
+                what: "market strikes",
+            })?;
 
             // Build candidate list.
             let mut cand: Vec<f64> = Vec::new();
@@ -349,16 +363,19 @@ impl StrikeGridPolicy for LogMoneynessQuantiles {
                 )
             };
 
-            let mut quantiles = generate_quantile_strikes(
-                self.n,
-                self.alpha_left,
-                self.alpha_right,
-                mu,
-                sigma_for_mapping,
-                x_min,
-                x_max,
-                &normal,
-            );
+            let quantile_shape = QuantileShape {
+                left_tail_alpha: self.alpha_left,
+                right_tail_alpha: self.alpha_right,
+            };
+            let log_moneyness_mapping = LogMoneynessMapping {
+                mean: mu,
+                volatility: sigma_for_mapping,
+                min_log_moneyness: x_min,
+                max_log_moneyness: x_max,
+            };
+
+            let mut quantiles =
+                generate_quantile_strikes(self.n, quantile_shape, log_moneyness_mapping, &normal);
             quantiles = sort_and_dedup_strikes(quantiles);
             quantiles = enforce_min_spacing(quantiles, self.min_spacing);
 
@@ -439,30 +456,28 @@ fn standard_normal() -> SanosResult<Normal> {
     })
 }
 
-fn shaped_probability(i: usize, n: usize, alpha_left: f64, alpha_right: f64) -> f64 {
-    let u0 = ((i as f64) + 0.5) / (n as f64);
-    if i < n / 2 {
-        0.5 * (2.0 * u0).powf(alpha_left)
+fn shaped_probability(sample_index: usize, sample_count: usize, shape: QuantileShape) -> f64 {
+    let centered_probability = ((sample_index as f64) + 0.5) / (sample_count as f64);
+    if sample_index < sample_count / 2 {
+        0.5 * (2.0 * centered_probability).powf(shape.left_tail_alpha)
     } else {
-        1.0 - 0.5 * (2.0 * (1.0 - u0)).powf(alpha_right)
+        1.0 - 0.5 * (2.0 * (1.0 - centered_probability)).powf(shape.right_tail_alpha)
     }
 }
 
 fn generate_quantile_strikes(
-    n: usize,
-    alpha_left: f64,
-    alpha_right: f64,
-    mu: f64,
-    sigma: f64,
-    x_min: f64,
-    x_max: f64,
+    sample_count: usize,
+    shape: QuantileShape,
+    mapping: LogMoneynessMapping,
     normal: &Normal,
 ) -> Vec<f64> {
-    let mut out = Vec::with_capacity(n);
-    for i in 0..n {
-        let u = shaped_probability(i, n, alpha_left, alpha_right).clamp(PROB_EPS, 1.0 - PROB_EPS);
+    let mut out = Vec::with_capacity(sample_count);
+    for sample_index in 0..sample_count {
+        let u =
+            shaped_probability(sample_index, sample_count, shape).clamp(PROB_EPS, 1.0 - PROB_EPS);
         let z = normal.inverse_cdf(u);
-        let x = (mu + sigma * z).clamp(x_min, x_max);
+        let x = (mapping.mean + mapping.volatility * z)
+            .clamp(mapping.min_log_moneyness, mapping.max_log_moneyness);
         out.push(x.exp());
     }
     out
@@ -624,13 +639,12 @@ fn fallback_safe_grid(
 }
 
 fn fallback_bounds(k_min: Option<f64>, k_max: Option<f64>, market_strikes: &[f64]) -> (f64, f64) {
-    let (default_lo, default_hi) = if let (Some(&lo), Some(&hi)) =
-        (market_strikes.first(), market_strikes.last())
-    {
-        (0.95 * lo, 1.05 * hi)
-    } else {
-        (0.8, 1.2)
-    };
+    let (default_lo, default_hi) =
+        if let (Some(&lo), Some(&hi)) = (market_strikes.first(), market_strikes.last()) {
+            (0.95 * lo, 1.05 * hi)
+        } else {
+            (0.8, 1.2)
+        };
 
     let mut lo = k_min.unwrap_or(default_lo.max(f64::MIN_POSITIVE));
     let mut hi = k_max.unwrap_or(default_hi.max(lo * 1.1));
@@ -842,7 +856,9 @@ mod tests {
     fn clean_strikes_filters_invalid_and_ensures_atm() {
         let out = clean_strikes(vec![f64::NAN, -2.0, 0.5, 0.5, 2.0], 0.1, 5.0, 1e-3, true).unwrap();
         assert!(out.windows(2).all(|w| w[1] > w[0]));
-        assert!(out.iter().any(|&k| k > 0.0 && (k.ln()).abs() <= 1e-3 + 1e-12));
+        assert!(out
+            .iter()
+            .any(|&k| k > 0.0 && (k.ln()).abs() <= 1e-3 + 1e-12));
     }
 
     #[test]
@@ -863,7 +879,10 @@ mod tests {
         let err = enforce_size_control(&strikes, &market, 2, true, 1e-3).unwrap_err();
         match err {
             SanosError::InvalidOrdering { msg } => {
-                assert_eq!(msg, "market strikes exceed max_points; cannot keep_all_market_strikes")
+                assert_eq!(
+                    msg,
+                    "market strikes exceed max_points; cannot keep_all_market_strikes"
+                )
             }
             _ => panic!("unexpected error variant: {err:?}"),
         }
@@ -912,30 +931,31 @@ mod tests {
         let normal = standard_normal().unwrap();
         let sigma = 0.22;
         let mu = -0.5 * sigma * sigma;
-        let strikes = generate_quantile_strikes(151, 1.8, 1.2, mu, sigma, -4.5 * sigma, 3.0 * sigma, &normal);
+        let strikes = generate_quantile_strikes(
+            151,
+            QuantileShape {
+                left_tail_alpha: 1.8,
+                right_tail_alpha: 1.2,
+            },
+            LogMoneynessMapping {
+                mean: mu,
+                volatility: sigma,
+                min_log_moneyness: -4.5 * sigma,
+                max_log_moneyness: 3.0 * sigma,
+            },
+            &normal,
+        );
         let strikes = sort_and_dedup_strikes(strikes);
 
         assert!(strikes.windows(2).all(|w| w[1] > w[0]));
 
         let left_spacings: Vec<f64> = strikes
             .windows(2)
-            .filter_map(|w| {
-                if w[1] <= 1.0 {
-                    Some(w[1] - w[0])
-                } else {
-                    None
-                }
-            })
+            .filter_map(|w| if w[1] <= 1.0 { Some(w[1] - w[0]) } else { None })
             .collect();
         let right_spacings: Vec<f64> = strikes
             .windows(2)
-            .filter_map(|w| {
-                if w[0] >= 1.0 {
-                    Some(w[1] - w[0])
-                } else {
-                    None
-                }
-            })
+            .filter_map(|w| if w[0] >= 1.0 { Some(w[1] - w[0]) } else { None })
             .collect();
 
         assert!(!left_spacings.is_empty());

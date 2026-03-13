@@ -8,7 +8,7 @@
       },
       "var_floor": 1e-12,
       "enforce_non_decreasing": true,
-      "eta": 0.25,
+      "eta": 0.30,
       "effective_var_floor": 2e-4
     }
   },
@@ -16,9 +16,9 @@
     "MarketAnchored": {
       "ensure_atm": true,
       "wings": {
-        "n_left": 2,
-        "n_right": 2,
-        "ratio": 1.2
+        "n_left": 4,
+        "n_right": 4,
+        "ratio": 1.4
       },
       "atm_refine": {
         "enabled": false,
@@ -26,12 +26,12 @@
         "delta_log": 0.05
       },
       "grid_size": {
-        "max_points": 80,
+        "max_points": 120,
         "keep_all_market_strikes": true
       },
       "min_strike": 0.0001,
       "max_strike": 10000.0,
-      "min_spacing_log": 0.001
+      "min_spacing_log": 0.0005
     }
   },
   "fit": {
@@ -39,15 +39,15 @@
       "omega": "Zero"
     },
     "weighting": {
-      "mode": "BidAskSpread",
+      "mode": "BidAskVega",
       "spread_floor": 1e-12,
-      "vega_floor": 1e-12
+      "vega_floor": 1e-8
     },
     "regularization": {
       "mode": { "mode": "Smoothing", "order": "D1" },
-      "lambda": 0.05,
+      "lambda": 0.08,
       "lambda_scaling": {
-        "knots": [[0.02, 15.0], [0.2, 0.1]]
+        "knots": [[0.02, 15.0], [0.2, 0.3]]
       }
     },
     "constraints": {
@@ -60,8 +60,8 @@
       "price_proxy": "Mid",
       "feasibility_tol": 1e-8,
       "market_completion": {
-        "k1_ratio": 0.2,
-        "kN_ratio": 2.0,
+        "k1_ratio": 0.15,
+        "kN_ratio": 2.5,
         "max_iters": 50,
         "slope_margin": 1e-10,
         "hard_caps": null,

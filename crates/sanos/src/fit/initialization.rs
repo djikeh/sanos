@@ -235,7 +235,8 @@ mod tests {
 
     #[test]
     fn compute_raw_linear_density_happy_path() {
-        let marginal = compute_raw_linear_density(1.0, &valid_strikes(), &valid_calls(), tol()).unwrap();
+        let marginal =
+            compute_raw_linear_density(1.0, &valid_strikes(), &valid_calls(), tol()).unwrap();
         let probs = marginal.probabilities();
         assert_eq!(probs.len(), 3);
         assert!((probs[0] - 0.25).abs() < 1e-12);
@@ -257,7 +258,8 @@ mod tests {
 
     #[test]
     fn compute_raw_linear_density_rejects_non_finite_strike() {
-        let err = compute_raw_linear_density(1.0, &[f64::NAN, 1.0], &[0.5, 0.0], tol()).unwrap_err();
+        let err =
+            compute_raw_linear_density(1.0, &[f64::NAN, 1.0], &[0.5, 0.0], tol()).unwrap_err();
         assert!(matches!(
             err,
             SanosError::NonFinite {
@@ -269,14 +271,9 @@ mod tests {
 
     #[test]
     fn compute_raw_linear_density_rejects_non_finite_call() {
-        let err = compute_raw_linear_density(1.0, &[0.5, 1.0], &[f64::INFINITY, 0.0], tol()).unwrap_err();
-        assert!(matches!(
-            err,
-            SanosError::NonFinite {
-                field: "call",
-                ..
-            }
-        ));
+        let err =
+            compute_raw_linear_density(1.0, &[0.5, 1.0], &[f64::INFINITY, 0.0], tol()).unwrap_err();
+        assert!(matches!(err, SanosError::NonFinite { field: "call", .. }));
     }
 
     #[test]
@@ -361,20 +358,14 @@ mod tests {
         let err =
             build_strict_linear_martingale_density(&book, InitPriceProxyConfig::Mid, f64::INFINITY)
                 .unwrap_err();
-        assert!(matches!(
-            err,
-            SanosError::NonFinite {
-                field: "mass",
-                ..
-            }
-        ));
+        assert!(matches!(err, SanosError::NonFinite { field: "mass", .. }));
     }
 
     #[test]
     fn build_strict_linear_martingale_density_detects_convex_order_violation() {
         let strikes = valid_strikes();
-        let spread = vec![0.5, 0.125, 0.0];
-        let degenerate = vec![0.5, 0.0, 0.0];
+        let spread = [0.5, 0.125, 0.0];
+        let degenerate = [0.5, 0.0, 0.0];
 
         let chain1_quotes = strikes
             .iter()
@@ -391,18 +382,16 @@ mod tests {
         let chain2 = OptionChain::new(1.0, chain2_quotes).unwrap();
         let book = OptionBook::new(vec![chain1, chain2]).unwrap();
 
-        let err =
-            build_strict_linear_martingale_density(&book, InitPriceProxyConfig::Mid, 1e-12)
-                .unwrap_err();
+        let err = build_strict_linear_martingale_density(&book, InitPriceProxyConfig::Mid, 1e-12)
+            .unwrap_err();
         assert!(matches!(err, SanosError::InvalidOrdering { .. }));
     }
 
     #[test]
     fn build_strict_linear_martingale_density_propagates_raw_density_error() {
         let book = make_book_with_calls(1.0, &[0.5, 1.0], &[0.9, 0.9], &[0.9, 0.9]);
-        let err =
-            build_strict_linear_martingale_density(&book, InitPriceProxyConfig::Mid, 1e-12)
-                .unwrap_err();
+        let err = build_strict_linear_martingale_density(&book, InitPriceProxyConfig::Mid, 1e-12)
+            .unwrap_err();
         assert!(matches!(err, SanosError::InvalidOrdering { .. }));
     }
 

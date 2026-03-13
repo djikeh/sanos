@@ -9,7 +9,7 @@
       "var_floor": 1e-12,
       "enforce_non_decreasing": true,
       "eta": 0.25,
-      "effective_var_floor": 2e-4
+      "effective_var_floor": 1e-4
     }
   },
   "grid": {
@@ -21,9 +21,9 @@
         "ratio": 1.2
       },
       "atm_refine": {
-        "enabled": false,
+        "enabled": true,
         "steps": 2,
-        "delta_log": 0.05
+        "delta_log": 0.03
       },
       "grid_size": {
         "max_points": 80,
@@ -45,9 +45,9 @@
     },
     "regularization": {
       "mode": { "mode": "Smoothing", "order": "D1" },
-      "lambda": 0.05,
+      "lambda": 0.03,
       "lambda_scaling": {
-        "knots": [[0.02, 15.0], [0.2, 0.1]]
+        "knots": [[0.02, 10.0], [0.15, 0.5], [1.0, 0.1]]
       }
     },
     "constraints": {
