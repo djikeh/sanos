@@ -32,14 +32,89 @@ pub enum RegularizationMode {
     },
 }
 
+/// Per-maturity lambda scaling.
+///
+/// The effective lambda for maturity j is `base_lambda * scale_j`, where `scale_j`
+/// is interpolated from the provided knots.  This allows stronger regularization
+/// at short maturities where the kernel is ill-conditioned.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct LambdaScaling {
+    /// (maturity, scale_factor) knots, sorted by maturity.
+    /// Interpolation is piecewise-linear with flat extrapolation.
+    /// If empty, all maturities use scale = 1.0.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub knots: Vec<(f64, f64)>,
+}
+
+impl LambdaScaling {
+    /// Return the scale factor at the given maturity.
+    pub fn scale_at(&self, maturity: f64) -> f64 {
+        if self.knots.is_empty() {
+            return 1.0;
+        }
+        if self.knots.len() == 1 || maturity <= self.knots[0].0 {
+            return self.knots[0].1;
+        }
+        let last = self.knots.len() - 1;
+        if maturity >= self.knots[last].0 {
+            return self.knots[last].1;
+        }
+        for w in self.knots.windows(2) {
+            let (ta, sa) = w[0];
+            let (tb, sb) = w[1];
+            if ta <= maturity && maturity <= tb {
+                let frac = (maturity - ta) / (tb - ta);
+                return (1.0 - frac) * sa + frac * sb;
+            }
+        }
+        1.0
+    }
+
+    pub fn is_uniform(&self) -> bool {
+        self.knots.is_empty()
+    }
+
+    pub fn validate(&self) -> SanosResult<()> {
+        for (i, &(t, s)) in self.knots.iter().enumerate() {
+            if !t.is_finite() || t <= 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "regularization.lambda_scaling.maturity",
+                    value: t,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::INFINITY,
+                });
+            }
+            if !s.is_finite() || s <= 0.0 {
+                return Err(SanosError::InvalidBound {
+                    field: "regularization.lambda_scaling.scale",
+                    value: s,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::INFINITY,
+                });
+            }
+            if i > 0 && t <= self.knots[i - 1].0 {
+                return Err(SanosError::InvalidOrdering {
+                    msg: "lambda_scaling knots must be strictly increasing in maturity",
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Configuration for Tikhonov regularization.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RegularizationConfig {
     #[cfg_attr(feature = "serde", serde(default))]
     pub mode: RegularizationMode,
-    /// Regularization weight (lambda > 0).  Ignored when mode = None.
+    /// Base regularization weight (lambda > 0).  Ignored when mode = None.
     pub lambda: f64,
+    /// Optional per-maturity scaling of lambda.
+    /// Effective lambda_j = lambda * scaling.scale_at(T_j).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub lambda_scaling: LambdaScaling,
 }
 
 impl Default for RegularizationConfig {
@@ -47,6 +122,7 @@ impl Default for RegularizationConfig {
         Self {
             mode: RegularizationMode::None,
             lambda: 1e-4,
+            lambda_scaling: LambdaScaling::default(),
         }
     }
 }
@@ -74,6 +150,7 @@ impl RegularizationConfig {
                 max: f64::INFINITY,
             });
         }
+        self.lambda_scaling.validate()?;
         Ok(())
     }
 }

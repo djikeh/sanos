@@ -55,7 +55,7 @@ pub fn build_backbone_with_total_variances(
 mod tests {
     use super::*;
     use crate::backbone::bs::bs_call_forward_norm;
-    use crate::backbone::{AtmMidPolicyConfig, BsTimeChangedConfig};
+    use crate::backbone::BsTimeChangedConfig;
     use crate::error::SanosError;
     use crate::market::{CallQuote, OptionChain};
 
@@ -77,10 +77,10 @@ mod tests {
     fn build_backbone_returns_model_that_prices_calls() {
         let book = book_from_pairs(&[(0.5, 0.04), (1.0, 0.09)]);
         let cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig {
-            atm_policy: AtmMidPolicyConfig::default(),
+            eta: 1.0 - 1e-12,
             var_floor: 0.0,
             enforce_non_decreasing: false,
-            eta: 1.0 - 1e-12,
+            ..BsTimeChangedConfig::default()
         });
 
         let built = build_backbone(&book, &cfg).unwrap();
@@ -93,10 +93,9 @@ mod tests {
     fn build_backbone_uses_eta_scaling() {
         let book = book_from_pairs(&[(0.5, 0.04)]);
         let cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig {
-            atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 0.0,
             enforce_non_decreasing: false,
-            eta: 0.25,
+            ..BsTimeChangedConfig::default()
         });
         let built = build_backbone(&book, &cfg).unwrap();
         let c = built.call(0.5, 1.0, 1.0).unwrap();
@@ -108,10 +107,8 @@ mod tests {
     fn build_backbone_propagates_invalid_var_floor() {
         let book = book_from_pairs(&[(0.5, 0.04)]);
         let cfg = BackboneConfig::BsTimeChanged(BsTimeChangedConfig {
-            atm_policy: AtmMidPolicyConfig::default(),
             var_floor: -1e-6,
-            enforce_non_decreasing: true,
-            eta: 0.25,
+            ..BsTimeChangedConfig::default()
         });
 
         let err = build_backbone(&book, &cfg).unwrap_err();

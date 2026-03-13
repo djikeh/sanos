@@ -10,7 +10,7 @@ mod initialization;
 pub use config::{
     FitConfig, ConstraintConfig, InitPriceProxyConfig, InitializationConfig,
     KernelConfig, OmegaConfig, WarmStartMode,
-    RegularizationConfig, RegularizationMode, SmoothingOrder,
+    RegularizationConfig, RegularizationMode, SmoothingOrder, LambdaScaling,
 };
 pub use kernels::{DenseMat, KernelC, KernelTransition, KernelSet};
 pub use kernel_builder::build_kernels;

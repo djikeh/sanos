@@ -44,6 +44,16 @@ pub struct BsTimeChangedConfig {
     pub var_floor: f64,
     pub enforce_non_decreasing: bool,
     pub eta: f64,
+    /// Minimum effective variance used in the backbone kernel evaluation.
+    ///
+    /// Applied **after** eta scaling: `v_eff = max(eta * W(T), effective_var_floor)`.
+    /// This ensures the kernel `E[(a Y_T - b)^+]` remains well-conditioned at
+    /// very short maturities where `eta * W(T)` would otherwise be tiny.
+    ///
+    /// The resulting `v_eff(T)` is still non-decreasing (since `W(T)` is non-decreasing
+    /// and we only clamp upward), so Y remains a valid martingale.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub effective_var_floor: f64,
 }
 
 impl Default for BsTimeChangedConfig {
@@ -53,6 +63,7 @@ impl Default for BsTimeChangedConfig {
             var_floor: 1e-12,
             enforce_non_decreasing: true,
             eta: 0.25,
+            effective_var_floor: 0.0,
         }
     }
 }
@@ -79,6 +90,20 @@ impl BsTimeChangedConfig {
                 value: self.eta,
                 min: 0.0,
                 max: 1.0 - f64::EPSILON,
+            });
+        }
+        if !self.effective_var_floor.is_finite() {
+            return Err(SanosError::NonFinite {
+                field: "bs_time_changed.effective_var_floor",
+                value: self.effective_var_floor,
+            });
+        }
+        if self.effective_var_floor < 0.0 {
+            return Err(SanosError::InvalidBound {
+                field: "bs_time_changed.effective_var_floor",
+                value: self.effective_var_floor,
+                min: 0.0,
+                max: f64::INFINITY,
             });
         }
         Ok(())
@@ -118,10 +143,8 @@ mod tests {
     #[test]
     fn bs_time_changed_validate_accepts_non_negative_floor() {
         let cfg = BsTimeChangedConfig {
-            atm_policy: AtmMidPolicyConfig::default(),
             var_floor: 0.0,
-            enforce_non_decreasing: true,
-            eta: 0.25,
+            ..BsTimeChangedConfig::default()
         };
         assert!(cfg.validate().is_ok());
     }
@@ -129,10 +152,8 @@ mod tests {
     #[test]
     fn bs_time_changed_validate_rejects_negative_floor() {
         let cfg = BsTimeChangedConfig {
-            atm_policy: AtmMidPolicyConfig::default(),
             var_floor: -1e-6,
-            enforce_non_decreasing: true,
-            eta: 0.25,
+            ..BsTimeChangedConfig::default()
         };
         let err = cfg.validate().unwrap_err();
         match err {
@@ -146,10 +167,8 @@ mod tests {
     #[test]
     fn bs_time_changed_validate_rejects_non_finite_floor() {
         let cfg = BsTimeChangedConfig {
-            atm_policy: AtmMidPolicyConfig::default(),
             var_floor: f64::NAN,
-            enforce_non_decreasing: true,
-            eta: 0.25,
+            ..BsTimeChangedConfig::default()
         };
         let err = cfg.validate().unwrap_err();
         match err {
@@ -161,10 +180,8 @@ mod tests {
     #[test]
     fn bs_time_changed_validate_rejects_eta_equal_one() {
         let cfg = BsTimeChangedConfig {
-            atm_policy: AtmMidPolicyConfig::default(),
-            var_floor: 0.0,
-            enforce_non_decreasing: true,
             eta: 1.0,
+            ..BsTimeChangedConfig::default()
         };
         let err = cfg.validate().unwrap_err();
         match err {

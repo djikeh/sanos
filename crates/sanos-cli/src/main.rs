@@ -116,6 +116,7 @@ struct SurfaceReconstructionJson {
 struct ReconstructionBackboneJson {
     model: String,
     eta: f64,
+    effective_var_floor: f64,
     var_curve_knots: Vec<VarianceKnotJson>,
 }
 
@@ -1074,6 +1075,7 @@ fn build_reconstruction_json(
             ReconstructionBackboneJson {
                 model: "bs_time_changed_lognormal".to_string(),
                 eta: model.var_scale(),
+                effective_var_floor: model.effective_var_floor(),
                 var_curve_knots,
             }
         }

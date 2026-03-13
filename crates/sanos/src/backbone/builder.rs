@@ -68,7 +68,8 @@ pub fn build_time_changed_lognormal_from_book(
     }
 
     let curve = PiecewiseLinearCurve::new(knots)?;
-    Ok(TimeChangedLognormal::new(curve, cfg.eta))
+    Ok(TimeChangedLognormal::new(curve, cfg.eta)
+        .with_effective_var_floor(cfg.effective_var_floor))
 }
 
 #[cfg(test)]
@@ -107,6 +108,7 @@ mod tests {
             var_floor: 0.0,
             enforce_non_decreasing: false,
             eta: 0.25,
+            ..BsTimeChangedConfig::default()
         };
 
         let model = build_time_changed_lognormal_from_book(&book, &cfg).unwrap();
@@ -122,6 +124,7 @@ mod tests {
             var_floor: 0.02,
             enforce_non_decreasing: true,
             eta: 0.25,
+            ..BsTimeChangedConfig::default()
         };
 
         let model = build_time_changed_lognormal_from_book(&book, &cfg).unwrap();
@@ -136,6 +139,7 @@ mod tests {
             var_floor: 0.0,
             enforce_non_decreasing: true,
             eta: 0.25,
+            ..BsTimeChangedConfig::default()
         };
 
         let model = build_time_changed_lognormal_from_book(&book, &cfg).unwrap();
@@ -151,6 +155,7 @@ mod tests {
             var_floor: 0.0,
             enforce_non_decreasing: false,
             eta: 0.25,
+            ..BsTimeChangedConfig::default()
         };
 
         let model = build_time_changed_lognormal_from_book(&book, &cfg).unwrap();

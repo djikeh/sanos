@@ -8,11 +8,14 @@ use crate::term::PiecewiseLinearCurve;
 ///     Y_T = exp(B_{v(T)} - 0.5 v(T))
 ///
 /// Kernel:
-///     E[(a Y_T - b)^+] = a * BSCall(F=1, K=b/a, var=v(T))
+///     E[(a Y_T - b)^+] = a * BSCall(F=1, K=b/a, var=v_eff(T))
+///
+/// where `v_eff(T) = max(eta * W(T), effective_var_floor)`.
 #[derive(Debug, Clone)]
 pub struct TimeChangedLognormal {
     var_curve: PiecewiseLinearCurve,
     var_scale: f64,
+    effective_var_floor: f64,
 }
 
 impl TimeChangedLognormal {
@@ -20,12 +23,23 @@ impl TimeChangedLognormal {
         Self {
             var_curve,
             var_scale,
+            effective_var_floor: 0.0,
         }
+    }
+
+    pub fn with_effective_var_floor(mut self, floor: f64) -> Self {
+        self.effective_var_floor = floor;
+        self
     }
 
     #[inline]
     pub fn var_scale(&self) -> f64 {
         self.var_scale
+    }
+
+    #[inline]
+    pub fn effective_var_floor(&self) -> f64 {
+        self.effective_var_floor
     }
 
     #[inline]
@@ -106,7 +120,7 @@ impl TimeChangedLognormal {
         }
 
         let v = self.var(maturity)?;
-        let v = v * eta;
+        let v = (v * eta).max(self.effective_var_floor);
         let k = b / a;
 
         // If b == 0, then k = 0. But bs_call_forward_norm requires k>0.

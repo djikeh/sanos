@@ -18,6 +18,8 @@ pub struct QLayout {
     pub offsets: Vec<usize>,
     /// sizes[j] = N_j (number of model strikes at maturity j)
     pub sizes: Vec<usize>,
+    /// maturities[j] = T_j
+    pub maturities: Vec<f64>,
     /// Total number of decision variables (sum of all N_j)
     pub total: usize,
 }
@@ -91,8 +93,9 @@ pub fn build_resopt_problem(
     let m = kernels.c.len();
     let mut offsets = Vec::with_capacity(m);
     let mut sizes = Vec::with_capacity(m);
+    let mut maturities = Vec::with_capacity(m);
     let mut total = 0usize;
-    for kc in &kernels.c {
+    for (j, kc) in kernels.c.iter().enumerate() {
         offsets.push(total);
         let nj = kc.model_strikes.len();
         if nj == 0 {
@@ -101,9 +104,10 @@ pub fn build_resopt_problem(
             });
         }
         sizes.push(nj);
+        maturities.push(book.chains()[j].maturity());
         total += nj;
     }
-    let layout = QLayout { offsets, sizes, total };
+    let layout = QLayout { offsets, sizes, maturities, total };
 
     // --- Build residual matrix A and target vector b ---
     // A is block-diagonal: each block j is (n_mkt_j x N_j), placed at columns offset[j]
