@@ -1,5 +1,5 @@
 use sanos::backbone::bs_call_forward_norm;
-use sanos::backbone::{bs_implied_atm_var_from_call, build_backbone};
+use sanos::backbone::{bs_implied_atm_var_from_call, build_backbone, build_backbone_with_total_variances};
 use sanos::backbone::{BackboneConfig, BsTimeChangedConfig};
 use sanos::calibration::calibrate;
 use sanos::calibration::{CalibrationConfig, ConvexOrderValidationMode};
@@ -92,6 +92,8 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
 
     // Step 1: backbone
     let backbone_model = build_backbone(&book, &cfg.backbone).expect("backbone build must succeed");
+    let (_, total_variances) =
+        build_backbone_with_total_variances(&book, &cfg.backbone).expect("ATM total variances must build");
     for chain in book.chains() {
         let t = chain.maturity();
         let atm = chain
@@ -154,7 +156,7 @@ fn calibrate_pipeline_step_by_step_from_real_book() {
     }
 
     // Step 4: solve with resopt
-    let solved = solve(&book, &kernels, &cfg.fit).expect("solve must succeed");
+    let solved = solve(&book, &kernels, &cfg.fit, Some(&total_variances)).expect("solve must succeed");
     let martingale_density = solved.density;
 
     let tol = DensityTolerances::from_tol(1e-6).unwrap();

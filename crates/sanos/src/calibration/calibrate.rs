@@ -58,7 +58,7 @@ pub fn calibrate_with_stats(
     let kernels = build_kernels(book, &strike_grids, &backbone_model, &cfg.fit.kernel)?;
 
     // 4) solve with resopt
-    let solution = solve(book, &kernels, &cfg.fit)?;
+    let solution = solve(book, &kernels, &cfg.fit, Some(&total_variances))?;
     let martingale_density = solution.density;
     let objective_value = solution.objective_value;
 

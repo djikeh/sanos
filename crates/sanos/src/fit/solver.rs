@@ -23,11 +23,12 @@ pub fn solve(
     book: &OptionBook,
     kernels: &KernelSet,
     cfg: &FitConfig,
+    total_variances: Option<&[f64]>,
 ) -> SanosResult<SolveResult> {
     cfg.validate()?;
     kernels.validate()?;
 
-    let (problem, layout) = build_resopt_problem(book, kernels, cfg)?;
+    let (problem, layout) = build_resopt_problem(book, kernels, cfg, total_variances)?;
 
     let result = DefaultSolver::new().solve(&problem).map_err(|e| {
         SanosError::External {

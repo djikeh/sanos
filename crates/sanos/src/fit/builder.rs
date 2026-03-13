@@ -5,7 +5,6 @@ use resopt::{
     LinearEqualities, LinearInequalities, Loss, Matrix,
 };
 
-use crate::backbone::bs::bs_implied_vol_from_call;
 use crate::error::{SanosError, SanosResult};
 use crate::fit::config::{FitConfig, QuoteWeightMode, QuoteWeightingConfig};
 use crate::fit::kernels::KernelSet;
@@ -30,15 +29,8 @@ fn quote_spread(quote: &CallQuote, cfg: &QuoteWeightingConfig) -> f64 {
     (quote.ask - quote.bid).max(cfg.spread_floor)
 }
 
-fn quote_vega(quote: &CallQuote, maturity: f64, cfg: &QuoteWeightingConfig) -> f64 {
-    let mid = quote.mid();
-    let implied_vol = match bs_implied_vol_from_call(mid, 1.0, quote.k, maturity) {
-        Ok(vol) if vol.is_finite() && vol > 0.0 => vol,
-        _ => return cfg.vega_floor,
-    };
-
+fn quote_vega(quote: &CallQuote, maturity: f64, total_variance: f64, cfg: &QuoteWeightingConfig) -> f64 {
     let sqrt_t = maturity.sqrt();
-    let total_variance = implied_vol * implied_vol * maturity;
     let sqrt_var = total_variance.sqrt();
     if !sqrt_var.is_finite() || sqrt_var <= 0.0 {
         return cfg.vega_floor;
@@ -48,15 +40,27 @@ fn quote_vega(quote: &CallQuote, maturity: f64, cfg: &QuoteWeightingConfig) -> f
     (sqrt_t * norm_pdf(d1)).max(cfg.vega_floor)
 }
 
-fn quote_weight(quote: &CallQuote, maturity: f64, cfg: &QuoteWeightingConfig) -> f64 {
+fn quote_weight(
+    quote: &CallQuote,
+    maturity: f64,
+    total_variance: Option<f64>,
+    cfg: &QuoteWeightingConfig,
+) -> SanosResult<f64> {
+    let pillar_vega = || -> SanosResult<f64> {
+        let total_variance = total_variance.ok_or(SanosError::InvalidOrdering {
+            msg: "ATM total variances are required for Vega-based quote weighting",
+        })?;
+        Ok(quote_vega(quote, maturity, total_variance, cfg))
+    };
+
     let base = match cfg.mode {
         QuoteWeightMode::Identity => 1.0,
         QuoteWeightMode::BidAskSpread => 1.0 / quote_spread(quote, cfg),
-        QuoteWeightMode::Vega => quote_vega(quote, maturity, cfg),
-        QuoteWeightMode::BidAskVega => quote_vega(quote, maturity, cfg) / quote_spread(quote, cfg),
+        QuoteWeightMode::Vega => pillar_vega()?,
+        QuoteWeightMode::BidAskVega => pillar_vega()? / quote_spread(quote, cfg),
     };
 
-    quote.weight * base
+    Ok(quote.weight * base)
 }
 
 /// Build the resopt constrained residual optimization problem from market data and kernels.
@@ -74,6 +78,7 @@ pub fn build_resopt_problem(
     book: &OptionBook,
     kernels: &KernelSet,
     cfg: &FitConfig,
+    total_variances: Option<&[f64]>,
 ) -> SanosResult<(ConstrainedResidualProblem, QLayout)> {
     if kernels.c.len() != book.len() {
         return Err(SanosError::InvalidOrdering {
@@ -112,6 +117,7 @@ pub fn build_resopt_problem(
         let kc = &kernels.c[j];
         let quotes = chain.quotes();
         let n_mkt = quotes.len();
+        let total_variance = total_variances.and_then(|vars| vars.get(j)).copied();
 
         if kc.market_strikes.len() != n_mkt {
             return Err(SanosError::InvalidOrdering {
@@ -125,7 +131,7 @@ pub fn build_resopt_problem(
         }
 
         for (r, quote) in quotes.iter().enumerate() {
-            let w = quote_weight(quote, chain.maturity(), &cfg.weighting);
+            let w = quote_weight(quote, chain.maturity(), total_variance, &cfg.weighting)?;
             let mid = quote.mid();
 
             // Fill row of A (weighted): W * C_j
@@ -381,7 +387,7 @@ mod tests {
         let cfg = FitConfig::default();
         let kernels = build_kernels(&book, &grids, &y_dyn, &cfg.kernel).unwrap();
 
-        let (problem, layout) = build_resopt_problem(&book, &kernels, &cfg).unwrap();
+        let (problem, layout) = build_resopt_problem(&book, &kernels, &cfg, None).unwrap();
 
         assert_eq!(layout.total, 6); // 3 + 3
         assert_eq!(layout.offsets, vec![0, 3]);
@@ -398,7 +404,7 @@ mod tests {
         let cfg = FitConfig::default();
         let kernels = build_kernels(&book, &grids, &y_dyn, &cfg.kernel).unwrap();
 
-        let (_problem, layout) = build_resopt_problem(&book, &kernels, &cfg).unwrap();
+        let (_problem, layout) = build_resopt_problem(&book, &kernels, &cfg, None).unwrap();
 
         for j in 0..layout.sizes.len() {
             assert_eq!(layout.offsets[j], layout.sizes[..j].iter().sum::<usize>());
@@ -413,7 +419,7 @@ mod tests {
             ..QuoteWeightingConfig::default()
         };
 
-        assert!((quote_weight(&quote, 1.0, &cfg) - 2.0).abs() < 1e-12);
+        assert!((quote_weight(&quote, 1.0, None, &cfg).unwrap() - 2.0).abs() < 1e-12);
     }
 
     #[test]
@@ -424,14 +430,14 @@ mod tests {
             ..QuoteWeightingConfig::default()
         };
 
-        assert!((quote_weight(&quote, 1.0, &cfg) - 60.0).abs() < 1e-10);
+        assert!((quote_weight(&quote, 1.0, None, &cfg).unwrap() - 60.0).abs() < 1e-10);
     }
 
     #[test]
     fn vega_based_weights_are_positive() {
         let maturity = 1.0;
-        let sigma = 0.2;
-        let mid = bs_call_forward_norm(1.0, sigma * sigma * maturity).unwrap();
+        let total_variance = 0.04;
+        let mid = bs_call_forward_norm(1.0, total_variance).unwrap();
         let quote = CallQuote::new(1.0, mid - 0.01, mid + 0.01, 1.0).unwrap();
 
         let vega_cfg = QuoteWeightingConfig {
@@ -443,10 +449,25 @@ mod tests {
             ..QuoteWeightingConfig::default()
         };
 
-        let vega_weight = quote_weight(&quote, maturity, &vega_cfg);
-        let combo_weight = quote_weight(&quote, maturity, &combo_cfg);
+        let vega_weight = quote_weight(&quote, maturity, Some(total_variance), &vega_cfg).unwrap();
+        let combo_weight =
+            quote_weight(&quote, maturity, Some(total_variance), &combo_cfg).unwrap();
 
         assert!(vega_weight > 0.0);
         assert!(combo_weight > vega_weight);
+    }
+
+    #[test]
+    fn vega_weight_requires_pillar_variance() {
+        let quote = CallQuote::new(1.0, 0.2, 0.3, 1.0).unwrap();
+        let cfg = QuoteWeightingConfig {
+            mode: QuoteWeightMode::Vega,
+            ..QuoteWeightingConfig::default()
+        };
+
+        assert!(matches!(
+            quote_weight(&quote, 1.0, None, &cfg),
+            Err(SanosError::InvalidOrdering { .. })
+        ));
     }
 }
